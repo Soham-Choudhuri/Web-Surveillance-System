@@ -14,6 +14,12 @@
 - **Strict UI Safeguards**: Implemented robust lockdown functionality during active downloads. The UI disables all configuration panels, grays out exit buttons, and injects a `beforeunload` browser hook to forcefully block accidental page refreshes that would sever the download connection.
 - **Resume & Cancellation**: Introduced an explicit red "Cancel" button utilizing `AbortController`. The system allows admins to safely sever the connection at any time while Ollama intelligently caches the progress to the hard drive, allowing seamless resuming at a later time.
 
+## 3. Standalone Dispatch Gateway
+- **Native OS Push Notifications**: Upgraded the Central Dispatch Center (`/dispatch`) to act as a robust, free alternative to Twilio. It now triggers native system-level push notifications for incidents, ensuring operators are instantly alerted even if their browser is minimized.
+- **Dynamic Audio Sirens**: Embedded a multi-severity audio alarm system. The browser plays different looping siren tracks (`critical.mp3`, `high.mp3`, `medium.mp3`, `low.mp3`) based on the threat level until manually acknowledged.
+- **Audio Testing Panel**: Added an interactive testing bank on the All Clear screen. Operators can manually test the siren for each threat level (Critical, High, Medium, Low) to familiarize themselves with the sounds before a real emergency occurs, complete with a dedicated Mute button.
+- **Security Lock Screen**: Implemented a mandatory "Start Monitoring" lock screen to cleanly bypass modern browser Autoplay policies, granting the system explicit permission to fire audio and push alerts at any time.
+
 ---
 
 # Changelog: Version 5.0
