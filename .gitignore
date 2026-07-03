@@ -14,9 +14,7 @@ env/
 .pytest_cache/
 
 # AI Models
-models/*.pt
-models/*.onnx
-models/*.bin
+models/
 
 # Video/Media
 *.mp4
@@ -30,3 +28,6 @@ Thumbs.db
 # Any other local temporary files
 scratch/
 incidents.db
+
+# Reports
+docs/report/

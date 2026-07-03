@@ -23,6 +23,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fastapi import FastAPI, Request, Form, UploadFile, File
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+import requests
 from twilio.twiml.messaging_response import MessagingResponse
 
 import config
@@ -35,7 +37,83 @@ from core.db import insert_log, get_logs, delete_log, clear_all_logs, get_camera
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+# Global Ollama Process reference
+ollama_process = None
+
+def get_config_dict():
+    default_config = {
+        "ollama_models_path": "",
+        "active_mode": "local",
+        "provider": "ollama",
+        "model_name": config.LOCAL_LLM_MODEL if hasattr(config, "LOCAL_LLM_MODEL") else "moondream",
+        "api_key": "",
+        "twilio_sid": "",
+        "twilio_auth": "",
+        "twilio_type": "SMS",
+        "twilio_from": "",
+        "twilio_to": "",
+        "alerts_enabled": False
+    }
+    CONFIG_FILE = "model_config.json"
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return default_config
+    return default_config
+
+def launch_ollama():
+    global ollama_process
+    
+    # Terminate any existing instance first
+    if ollama_process:
+        try:
+            ollama_process.terminate()
+            ollama_process.wait(timeout=2)
+        except:
+            pass
+            
+    # Always attempt to kill any stray ollama processes
+    subprocess.run(["taskkill", "/f", "/im", "ollama.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    cfg = get_config_dict()
+    models_path = cfg.get("ollama_models_path", "").strip()
+    
+    env = os.environ.copy()
+    if models_path:
+        env["OLLAMA_MODELS"] = models_path
+        logger.info(f"Launching Ollama with custom models path: {models_path}")
+    else:
+        logger.info("Launching Ollama with default models path")
+        
+    try:
+        # Start Ollama in the background
+        ollama_process = subprocess.Popen(
+            ["ollama", "serve"], 
+            env=env,
+            stdout=subprocess.DEVNULL, 
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+        )
+    except Exception as e:
+        logger.error(f"Failed to start local Ollama engine: {e}")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Launch Ollama Engine
+    launch_ollama()
+    yield
+    # Shutdown: Clean up Ollama Engine
+    global ollama_process
+    if ollama_process:
+        try:
+            ollama_process.terminate()
+            ollama_process.wait(timeout=3)
+        except:
+            pass
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -362,32 +440,63 @@ def admin_check():
 
 @app.get("/api/config")
 def get_config():
-    default_config = {
-        "active_mode": "local",
-        "provider": "ollama",
-        "model_name": config.LOCAL_LLM_MODEL,
-        "api_key": "",
-        "twilio_sid": "",
-        "twilio_auth": "",
-        "twilio_type": "SMS",
-        "twilio_from": "",
-        "twilio_to": "",
-        "alerts_enabled": False
-    }
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, "r") as f:
-                return json.load(f)
-        except:
-            return default_config
-    return default_config
+    return get_config_dict()
 
 @app.post("/api/config")
 async def save_config(request: Request):
     data = await request.json()
+    
+    # Check if the models path changed
+    current_cfg = get_config_dict()
+    old_path = current_cfg.get("ollama_models_path", "").strip()
+    new_path = data.get("ollama_models_path", "").strip()
+    
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=4)
+        
+    # If the path changed, restart Ollama
+    if old_path != new_path:
+        launch_ollama()
+        
     return {"status": "Saved"}
+
+# Ollama Model Manager Proxy Endpoints
+@app.get("/api/ollama/tags")
+def get_ollama_tags():
+    try:
+        resp = requests.get("http://localhost:11434/api/tags", timeout=5)
+        return resp.json()
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.delete("/api/ollama/delete")
+async def delete_ollama_model(request: Request):
+    try:
+        data = await request.json()
+        resp = requests.delete("http://localhost:11434/api/delete", json=data, timeout=5)
+        if resp.status_code == 200:
+            return {"status": "Deleted"}
+        return JSONResponse({"error": resp.text}, status_code=resp.status_code)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+@app.post("/api/ollama/pull")
+async def pull_ollama_model(request: Request):
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+        
+    def stream_pull():
+        try:
+            with requests.post("http://localhost:11434/api/pull", json=data, stream=True, timeout=600) as resp:
+                for line in resp.iter_lines():
+                    if line:
+                        yield line + b"\n"
+        except Exception as e:
+            yield json.dumps({"error": str(e)}).encode() + b"\n"
+            
+    return StreamingResponse(stream_pull(), media_type="application/x-ndjson")
 
 # Camera Endpoints
 @app.get("/api/cameras")

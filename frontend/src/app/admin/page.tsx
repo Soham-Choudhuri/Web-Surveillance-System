@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 export default function AdminPortal() {
   const [access, setAccess] = useState<boolean | null>(null);
@@ -8,6 +8,7 @@ export default function AdminPortal() {
     provider: "ollama",
     model_name: "moondream",
     api_key: "",
+    ollama_models_path: "",
     twilio_sid: "",
     twilio_auth: "",
     twilio_type: "SMS",
@@ -15,6 +16,32 @@ export default function AdminPortal() {
     twilio_to: ""
   });
   const [saving, setSaving] = useState(false);
+  
+  const [ollamaModels, setOllamaModels] = useState<any[]>([]);
+  const [downloadModelName, setDownloadModelName] = useState("");
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadStatus, setDownloadStatus] = useState("");
+  const [isDownloading, setIsDownloading] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDownloading) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDownloading]);
+
+  const fetchModels = async () => {
+    try {
+      const res = await fetch("/api/ollama/tags");
+      const data = await res.json();
+      if (data.models) setOllamaModels(data.models);
+    } catch (e) {}
+  };
 
   useEffect(() => {
     fetch(`/api/admin_check`)
@@ -26,6 +53,8 @@ export default function AdminPortal() {
       .then(res => res.json())
       .then(data => setConfig(data))
       .catch(() => {});
+      
+    fetchModels();
   }, []);
 
   const handleModeChange = (mode: string) => {
@@ -56,6 +85,84 @@ export default function AdminPortal() {
     setTimeout(() => setSaving(false), 800);
   };
 
+  const handleDeleteModel = async (name: string) => {
+    if (!confirm(`Are you sure you want to delete ${name}?`)) return;
+    try {
+      await fetch("/api/ollama/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name })
+      });
+      fetchModels();
+    } catch (e) {}
+  };
+
+  const handlePullModel = async () => {
+    if (!downloadModelName) return;
+    setIsDownloading(true);
+    setDownloadProgress(0);
+    setDownloadStatus("Starting...");
+    
+    abortControllerRef.current = new AbortController();
+    
+    try {
+      const res = await fetch("/api/ollama/pull", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: downloadModelName, stream: true }),
+        signal: abortControllerRef.current.signal
+      });
+      
+      if (!res.body) throw new Error("No body");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+        for (const line of lines) {
+          if (!line) continue;
+          try {
+            const data = JSON.parse(line);
+            if (data.status) setDownloadStatus(data.status);
+            if (data.completed && data.total) {
+              setDownloadProgress((data.completed / data.total) * 100);
+            }
+          } catch(e) {}
+        }
+      }
+      setDownloadStatus("Download complete!");
+      setDownloadModelName("");
+      setTimeout(() => {
+        setIsDownloading(false);
+        setDownloadStatus("");
+        setDownloadProgress(0);
+        fetchModels();
+      }, 2000);
+      
+    } catch (e: any) {
+      if (e.name === 'AbortError') {
+        setDownloadStatus("Download cancelled.");
+      } else {
+        setDownloadStatus("Download failed.");
+      }
+      setTimeout(() => {
+        setIsDownloading(false);
+        setDownloadStatus("");
+        setDownloadProgress(0);
+      }, 2000);
+    }
+  };
+
+  const handleCancelDownload = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+  };
+
   if (access === null) return <div className="min-h-screen bg-neutral-950 flex items-center justify-center text-white">Loading...</div>;
   if (access === false) return (
     <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center text-white">
@@ -76,7 +183,11 @@ export default function AdminPortal() {
              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
              <h1 className="text-xl font-semibold">AwareX Administration</h1>
           </div>
-          <a href="/" className="text-sm font-medium text-neutral-400 hover:text-white transition-colors">Exit Admin</a>
+          {isDownloading ? (
+            <span className="text-sm font-medium text-neutral-600 cursor-not-allowed" title="Cannot exit during download">Exit Admin</span>
+          ) : (
+            <a href="/" className="text-sm font-medium text-neutral-400 hover:text-white transition-colors">Exit Admin</a>
+          )}
         </div>
       </header>
 
@@ -89,8 +200,8 @@ export default function AdminPortal() {
             <div>
               <label className="text-sm font-medium text-neutral-300 block mb-2">Execution Mode</label>
               <div className="flex bg-neutral-900 rounded-xl p-1 border border-white/5 max-w-sm">
-                  <button onClick={() => handleModeChange("local")} className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${config.active_mode === "local" ? 'bg-indigo-500 text-white shadow' : 'text-neutral-400 hover:text-neutral-200'}`}>Local Edge</button>
-                  <button onClick={() => handleModeChange("cloud")} className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${config.active_mode === "cloud" ? 'bg-indigo-500 text-white shadow' : 'text-neutral-400 hover:text-neutral-200'}`}>Cloud API</button>
+                  <button disabled={isDownloading} onClick={() => handleModeChange("local")} className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${config.active_mode === "local" ? 'bg-indigo-500 text-white shadow' : 'text-neutral-400 hover:text-neutral-200'} disabled:opacity-50`}>Local Edge</button>
+                  <button disabled={isDownloading} onClick={() => handleModeChange("cloud")} className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${config.active_mode === "cloud" ? 'bg-indigo-500 text-white shadow' : 'text-neutral-400 hover:text-neutral-200'} disabled:opacity-50`}>Cloud API</button>
               </div>
             </div>
 
@@ -101,7 +212,8 @@ export default function AdminPortal() {
                   <select 
                     value={config.provider} 
                     onChange={e => handleProviderChange(e.target.value)}
-                    className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none text-white"
+                    disabled={isDownloading}
+                    className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none text-white disabled:opacity-50"
                   >
                     <option value="ollama">Ollama</option>
                   </select>
@@ -111,12 +223,27 @@ export default function AdminPortal() {
                   <select 
                     value={config.model_name}
                     onChange={e => setConfig({...config, model_name: e.target.value})}
-                    className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none text-white"
+                    disabled={isDownloading}
+                    className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none text-white disabled:opacity-50"
                   >
                     <option value="moondream">moondream</option>
                     <option value="llava">llava</option>
                     <option value="bakllava">bakllava</option>
                   </select>
+                </div>
+                <div className="md:col-span-2 mt-2">
+                  <label className="text-sm font-medium text-neutral-300 block mb-2">
+                    Models Directory Path (Optional)
+                    <span className="block text-xs text-neutral-500 font-normal mt-0.5">Absolute path to override default Ollama storage. Saving will restart the local AI engine.</span>
+                  </label>
+                  <input 
+                    type="text" 
+                    value={(config as any).ollama_models_path || ""}
+                    onChange={e => setConfig({...config, ollama_models_path: e.target.value})}
+                    disabled={isDownloading}
+                    placeholder="e.g. C:\System\Dev\Ollama\models"
+                    className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white disabled:opacity-50"
+                  />
                 </div>
               </div>
             )}
@@ -156,6 +283,83 @@ export default function AdminPortal() {
                   />
                 </div>
               </div>
+            )}
+            
+            {/* Ollama Model Manager Section */}
+            {config.active_mode === "local" && (
+            <div className="pt-8 mt-8 border-t border-white/5 animate-in fade-in">
+              <h2 className="text-xl font-bold mb-2">Local Model Manager</h2>
+              <p className="text-neutral-400 mb-6 text-sm">Download, view, and manage your local Ollama vision and language models directly from the UI.</p>
+              
+              <div className="bg-neutral-900 border border-white/5 rounded-xl p-6 mb-6">
+                 <h3 className="text-sm font-medium text-white mb-4">Installed Models</h3>
+                 {ollamaModels.length === 0 ? (
+                    <div className="text-sm text-neutral-500 py-4 text-center">No models installed or Ollama engine is not running.</div>
+                 ) : (
+                    <div className="space-y-3">
+                      {ollamaModels.map(model => (
+                        <div key={model.name} className="flex items-center justify-between bg-black/40 px-4 py-3 rounded-lg border border-white/5">
+                           <div>
+                              <div className="text-sm font-medium text-white">{model.name}</div>
+                              <div className="text-xs text-neutral-500">{(model.size / 1024 / 1024 / 1024).toFixed(2)} GB</div>
+                           </div>
+                           <button 
+                             onClick={() => handleDeleteModel(model.name)}
+                             className="text-neutral-500 hover:text-rose-500 transition-colors p-2"
+                             title="Delete Model"
+                           >
+                             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                           </button>
+                        </div>
+                      ))}
+                    </div>
+                 )}
+              </div>
+              
+              <div className="bg-neutral-900 border border-white/5 rounded-xl p-6">
+                 <h3 className="text-sm font-medium text-white mb-4">Pull New Model</h3>
+                 <div className="flex gap-4">
+                    <input 
+                      type="text" 
+                      value={downloadModelName}
+                      onChange={e => setDownloadModelName(e.target.value)}
+                      disabled={isDownloading}
+                      placeholder="e.g. llama3.2-vision:latest"
+                      className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white disabled:opacity-50"
+                    />
+                    <button 
+                      onClick={handlePullModel}
+                      disabled={isDownloading || !downloadModelName}
+                      className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 text-white px-6 py-3 rounded-xl font-medium text-sm transition-all whitespace-nowrap"
+                    >
+                      {isDownloading ? 'Pulling...' : 'Download Model'}
+                    </button>
+                    {isDownloading && (
+                      <button 
+                        onClick={handleCancelDownload}
+                        className="bg-rose-600 hover:bg-rose-500 text-white px-6 py-3 rounded-xl font-medium text-sm transition-all whitespace-nowrap"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                 </div>
+                 
+                 {isDownloading && (
+                   <div className="mt-4">
+                      <div className="flex justify-between text-xs text-neutral-400 mb-1">
+                        <span>{downloadStatus}</span>
+                        <span>{Math.round(downloadProgress)}%</span>
+                      </div>
+                      <div className="w-full bg-black/40 rounded-full h-2.5 overflow-hidden">
+                         <div 
+                           className="bg-indigo-500 h-2.5 rounded-full transition-all duration-300 ease-out" 
+                           style={{ width: `${downloadProgress}%` }}
+                         ></div>
+                      </div>
+                   </div>
+                 )}
+              </div>
+            </div>
             )}
 
             <div className="pt-8 mt-8 border-t border-white/5">
@@ -224,7 +428,8 @@ export default function AdminPortal() {
               </a>
               <button 
                 onClick={handleSave} 
-                className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2.5 rounded-xl font-medium text-sm transition-all flex items-center shadow-lg shadow-indigo-500/20"
+                disabled={isDownloading || saving}
+                className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 text-white px-6 py-2.5 rounded-xl font-medium text-sm transition-all flex items-center shadow-lg shadow-indigo-500/20"
               >
                 {saving ? 'Saving...' : 'Save Configuration'}
               </button>

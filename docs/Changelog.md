@@ -1,6 +1,22 @@
 # AwareX: Multimodal Autonomous Surveillance System
 
-# Changelog: Version 5.0 (Stable)
+# Changelog: Version 6.0 (Stable)
+
+## 1. Automated Ollama Subprocess Management
+- **FastAPI Process Control**: Shifted the responsibility of managing the `ollama serve` background engine from the disjointed Windows `.bat` script directly into the FastAPI Python backend. FastAPI now seamlessly spawns Ollama in the background on boot and gracefully terminates it on shutdown.
+- **Dynamic Model Paths**: Administrators can now define a custom, absolute path for local Ollama models directly via the Next.js Admin Dashboard.
+- **Zero-Downtime Restarts**: The `POST /api/config` endpoint intelligently detects if the model path has been updated. If so, it instantly kills the running Ollama process and re-launches it with the new `OLLAMA_MODELS` environment variable without requiring a system reboot.
+- **Script Cleanup**: Refactored `run.bat` to eliminate hardcoded executable shims and global system path injections, switching to robust `python -m pip` and `python -m uvicorn` commands. This completely resolves "Fatal error in launcher" bugs that occurred when the project folder was renamed or moved.
+
+## 2. In-Dashboard Model Manager
+- **Live UI Model Downloads**: Added a sleek Model Manager directly to the Next.js Admin Dashboard. Administrators can now pull heavy local AI models (like `llama3`) directly through the browser without ever opening a terminal.
+- **Dynamic Progress Streaming**: Integrated native JavaScript streaming APIs that hook directly into Ollama's background engine via a FastAPI reverse proxy. Download progress is physically drawn onto the screen in real-time with a dynamic CSS progress bar.
+- **Strict UI Safeguards**: Implemented robust lockdown functionality during active downloads. The UI disables all configuration panels, grays out exit buttons, and injects a `beforeunload` browser hook to forcefully block accidental page refreshes that would sever the download connection.
+- **Resume & Cancellation**: Introduced an explicit red "Cancel" button utilizing `AbortController`. The system allows admins to safely sever the connection at any time while Ollama intelligently caches the progress to the hard drive, allowing seamless resuming at a later time.
+
+---
+
+# Changelog: Version 5.0
 
 ## 1. AwareX Rebranding & UI Polish
 - **Official Branding**: The project has officially been named **AwareX**. Next.js meta tags, dashboard headers, and metadata descriptions were thoroughly updated to reflect this new premium identity.
