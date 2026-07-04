@@ -52,7 +52,7 @@
 
 ## 3. Remote Access & Next.js Reverse Proxy
 - **Bypassing Windows Firewall**: Re-engineered the Next.js network layer (`next.config.ts`) to act as a stealthy reverse proxy. All frontend API requests to the Python backend (`:8000`) are now internally proxied through the Next.js server (`:3000`). This completely bypasses restrictive Windows Defender inbound port blocking, allowing seamless LAN access.
-- **Tailscale P2P VPN Guide**: Shipped a comprehensive setup document detailing how to establish a zero-configuration mesh network to securely stream AwareX feeds and incident logs from anywhere in the world. **[View Tailscale Setup Guide](ailscale_setup_guide.md)**
+- **Tailscale P2P VPN Guide**: Shipped a comprehensive setup document detailing how to establish a zero-configuration mesh network to securely stream AwareX feeds and incident logs from anywhere in the world. **[View Tailscale Setup Guide](tailscale_setup_guide.md)**
 
 ---
 
@@ -114,4 +114,4 @@ Several underlying bugs impacting performance and stability were patched:
 ## 5. Continuous Alerting System
 We updated the Twilio alert logic (`core/decision.py`) to keep authorities continuously informed rather than only alerting on critical emergencies.
 - **Always-On Alerts**: The system now pushes incident reports to WhatsApp or SMS during every analysis interval, regardless of whether the threat level is High, Medium, or Low.
-- **Dynamic Message Formatting**: To prevent alert fatigue and clearly communicate urgency, the outgoing messages are now dynamically formatted. The message title and emojis instantly convey the severity (e.g., 🚨 CRITICAL, ⚠️ WARNING, or ℹ️ INFO) so the recipient knows whether immediate action is required or if it's just a routine monitoring update.
+- **Dynamic Message Formatting**: To prevent alert fatigue and clearly communicate urgency, the outgoing messages are now dynamically formatted. The message title and emojis instantly convey the severity (e.g., 🚨 CRITICAL, ⚠️ WARNING, or ℹ️ INFO) so the recipient knows whether immediate action is required or if it's just a routine monitoring update. **[View Twilio Setup Guide](twilio_free_setup_guide.md)**
