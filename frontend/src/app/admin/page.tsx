@@ -13,8 +13,10 @@ export default function AdminPortal() {
     twilio_auth: "",
     twilio_type: "SMS",
     twilio_from: "",
-    twilio_to: ""
+    twilio_to: "",
+    allowed_origins: [] as string[]
   });
+  const [newOrigin, setNewOrigin] = useState("");
   const [saving, setSaving] = useState(false);
   
   const [ollamaModels, setOllamaModels] = useState<any[]>([]);
@@ -178,7 +180,7 @@ export default function AdminPortal() {
   return (
     <div className="min-h-screen bg-neutral-950 text-white font-sans">
       <header className="border-b border-white/10 bg-neutral-950/50 backdrop-blur-xl">
-        <div className="max-w-4xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-0 sm:h-16 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0">
           <div className="flex items-center space-x-3 text-rose-400">
              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
              <h1 className="text-xl font-semibold">AwareX Administration</h1>
@@ -191,8 +193,8 @@ export default function AdminPortal() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-12">
-        <div className="p-8 rounded-3xl bg-white/[0.02] border border-white/5 shadow-2xl">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+        <div className="p-6 sm:p-8 rounded-3xl bg-white/[0.02] border border-white/5 shadow-2xl">
           <h2 className="text-2xl font-bold mb-2">Model Configuration</h2>
           <p className="text-neutral-400 mb-8 text-sm">Select and configure the visual language model powering the intelligence hub.</p>
 
@@ -421,21 +423,80 @@ export default function AdminPortal() {
               </div>
             </div>
 
-            <div className="pt-6 border-t border-white/5 flex items-center justify-between">
-              <a href="https://www.twilio.com/login" target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors font-medium flex items-center gap-1">
+            <div className="pt-6 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 sm:gap-0">
+              <a href="https://www.twilio.com/login" target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors font-medium flex items-center gap-1 order-2 sm:order-1">
                  Twilio Developer Dashboard
                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
               </a>
               <button 
                 onClick={handleSave} 
                 disabled={isDownloading || saving}
-                className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 text-white px-6 py-2.5 rounded-xl font-medium text-sm transition-all flex items-center shadow-lg shadow-indigo-500/20"
+                className="w-full sm:w-auto order-1 sm:order-2 justify-center bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 text-white px-6 py-2.5 rounded-xl font-medium text-sm transition-all flex items-center shadow-lg shadow-indigo-500/20"
               >
                 {saving ? 'Saving...' : 'Save Configuration'}
               </button>
             </div>
           </div>
         </div>
+
+        {/* Security: Allowed Origins */}
+        <div className="mt-8 p-6 sm:p-8 rounded-3xl bg-white/[0.02] border border-white/5 shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-5">
+            <svg className="w-32 h-32" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+          </div>
+          <h2 className="text-2xl font-bold mb-2">Security: Allowed Origins</h2>
+          <p className="text-neutral-400 mb-8 text-sm">Manage which IP addresses or Tailscale URLs are allowed to access the system remotely. Next.js will hot-reload automatically when you save changes.</p>
+          
+          <div className="space-y-4 mb-6">
+            {(config.allowed_origins || []).map((origin, idx) => (
+              <div key={idx} className="flex items-center justify-between bg-neutral-900 border border-white/10 rounded-xl px-4 py-3">
+                <span className="text-sm font-mono text-emerald-400 break-all pr-4">{origin}</span>
+                <button 
+                  onClick={() => {
+                    const updated = [...config.allowed_origins];
+                    updated.splice(idx, 1);
+                    setConfig({...config, allowed_origins: updated});
+                  }}
+                  className="text-rose-500 hover:text-rose-400 text-sm font-medium transition-colors flex-shrink-0"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+          
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <input 
+              type="text" 
+              value={newOrigin}
+              onChange={e => setNewOrigin(e.target.value)}
+              placeholder="e.g. 100.85.22.14 or awarex.ts.net"
+              className="flex-1 bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 text-white font-mono"
+            />
+            <button 
+              onClick={() => {
+                if(newOrigin.trim()) {
+                  setConfig({...config, allowed_origins: [...(config.allowed_origins || []), newOrigin.trim()]});
+                  setNewOrigin("");
+                }
+              }}
+              className="w-full sm:w-auto bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30 px-6 py-3 rounded-xl font-medium text-sm transition-all"
+            >
+              Add Origin
+            </button>
+          </div>
+          
+          <div className="pt-6 mt-6 border-t border-white/5 flex flex-col sm:flex-row items-center justify-end">
+             <button 
+                onClick={handleSave} 
+                disabled={isDownloading || saving}
+                className="w-full sm:w-auto justify-center bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 text-white px-6 py-2.5 rounded-xl font-medium text-sm transition-all flex items-center shadow-lg shadow-indigo-500/20"
+              >
+                {saving ? 'Applying Security Rules...' : 'Save All Configurations'}
+              </button>
+          </div>
+        </div>
+
       </main>
     </div>
   );

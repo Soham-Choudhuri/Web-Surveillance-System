@@ -1,5 +1,22 @@
 # AwareX: Multimodal Autonomous Surveillance System
 
+# Changelog: Version 7.0 (Current)
+
+## 1. Universal Mobile Responsiveness
+- **Dynamic Mobile-First Scaling**: The entire Next.js frontend suite (Main Dashboard, Admin Portal, and Logs Database) has been rigorously overhauled with mobile-first CSS architecture. Elements now intelligently flex, wrap, and stack via dynamic viewport boundaries (Tailwind `sm:`, `md:`), guaranteeing flawless operation across any mobile aspect ratio.
+- **Adaptive Data Tables**: Resolved aggressive horizontal scrolling issues caused by rigid HTML tables on the Logs page. The system now dynamically shrinks cellular padding and truncates text exclusively on mobile screens to drastically improve viewport efficiency.
+
+## 2. Dynamic Origins & Security Management
+- **In-Dashboard DNS Protection**: Introduced a brand new "Security: Allowed Origins" module directly into the Admin Portal. Administrators can now visually append new Tailscale IPs or Funnel URLs to the system's database to grant them remote access on the fly.
+- **Automated Next.js Hot-Reloads**: Re-engineered the Python backend to physically synchronize with the Next.js compiler. When an admin updates security settings, Python injects a microscopic timestamp trigger directly into the `next.config.ts` source code, forcing the Next.js engine to perform an instant hot-reload and immediately apply the new firewall rules without taking the server offline.
+- **Compiler Input Sanitization**: Next.js 15 operates with extremely strict `allowedDevOrigins` parameters. The config compiler now employs robust normalization algorithms that automatically strip user-pasted URL protocols (`https://`) and ports, feeding Next.js the exact raw hostnames it demands to prevent fatal server crashes.
+
+## 3. Mobile Push Notification Stability
+- **Illegal Constructor Patch**: Fixed a severe frontend crash that occurred strictly on mobile devices (Android Chrome / iOS Safari). Mobile operating systems explicitly block the Desktop `new Notification()` API to prevent battery drain.
+- **Service Worker Downgrade**: The Notification block is now wrapped in an intelligent fallback system. The dashboard safely attempts the standard API, catches any OS-level `Illegal constructor` exceptions, and dynamically reroutes the alert through the `ServiceWorkerRegistration` engine to keep the React application completely stable while still delivering the push alert.
+
+---
+
 # Changelog: Version 6.0 (Stable)
 
 ## 1. Automated Ollama Subprocess Management

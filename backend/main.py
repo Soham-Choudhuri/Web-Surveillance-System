@@ -451,12 +451,31 @@ async def save_config(request: Request):
     old_path = current_cfg.get("ollama_models_path", "").strip()
     new_path = data.get("ollama_models_path", "").strip()
     
+    old_origins = current_cfg.get("allowed_origins", [])
+    new_origins = data.get("allowed_origins", [])
+    
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f, indent=4)
         
     # If the path changed, restart Ollama
     if old_path != new_path:
         launch_ollama()
+        
+    # If origins changed, trigger Next.js Hot Reload
+    if old_origins != new_origins:
+        next_config_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "next.config.ts")
+        if os.path.exists(next_config_path):
+            try:
+                with open(next_config_path, "r") as nf:
+                    content = nf.read()
+                import re
+                from datetime import datetime
+                # Increment the trigger or use timestamp
+                new_content = re.sub(r"// HOT_RELOAD_TRIGGER: \d+", f"// HOT_RELOAD_TRIGGER: {int(datetime.now().timestamp())}", content)
+                with open(next_config_path, "w") as nf:
+                    nf.write(new_content)
+            except Exception as e:
+                logger.error(f"Failed to hot-reload Next.js: {e}")
         
     return {"status": "Saved"}
 

@@ -54,11 +54,22 @@ export default function DispatchCenter() {
       // Trigger Notification
       if ("Notification" in window && Notification.permission === "granted") {
         if (!notifiedSet.current.has(currentIncidentKey)) {
-          new Notification(`[${normalizedSeverity}] AwareX Incident Detected`, {
-            body: currentIncidentKey,
-            icon: "/favicon.ico"
-          });
-          notifiedSet.current.add(currentIncidentKey);
+          const title = `[${normalizedSeverity}] AwareX Incident Detected`;
+          const options = { body: currentIncidentKey, icon: "/favicon.ico" };
+          
+          try {
+            // Standard desktop notification API
+            new Notification(title, options);
+            notifiedSet.current.add(currentIncidentKey);
+          } catch (err: any) {
+            // Mobile Chrome/Android throws "Illegal constructor", requires ServiceWorker
+            if (navigator.serviceWorker) {
+              navigator.serviceWorker.ready.then(registration => {
+                registration.showNotification(title, options);
+                notifiedSet.current.add(currentIncidentKey);
+              }).catch(e => console.error("SW notification failed:", e));
+            }
+          }
         }
       }
 

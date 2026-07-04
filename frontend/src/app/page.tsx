@@ -87,23 +87,23 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-neutral-950 text-white font-sans selection:bg-indigo-500/30">
       <header className="sticky top-0 z-50 border-b border-white/10 bg-neutral-950/50 backdrop-blur-xl">
-        <div className="w-full mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="w-full mx-auto px-4 sm:px-6 py-3 sm:py-0 sm:h-16 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
               <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
             </div>
             <h1 className="text-xl font-semibold tracking-tight">AwareX</h1>
           </div>
-          <div className="flex items-center space-x-4">
-             <div className="flex items-center space-x-2 text-sm font-medium">
-               <span className="relative flex h-3 w-3">
+          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 sm:space-x-0">
+             <div className="flex items-center space-x-2 text-xs sm:text-sm font-medium bg-white/5 sm:bg-transparent px-2 py-1 sm:p-0 rounded-lg">
+               <span className="relative flex h-2.5 w-2.5 sm:h-3 sm:w-3">
                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${state.monitoring ? 'bg-emerald-400' : 'bg-rose-400'}`}></span>
-                 <span className={`relative inline-flex rounded-full h-3 w-3 ${state.monitoring ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+                 <span className={`relative inline-flex rounded-full h-2.5 w-2.5 sm:h-3 sm:w-3 ${state.monitoring ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
                </span>
                <span className="text-neutral-300">{state.monitoring ? 'System Online' : 'System Offline'}</span>
              </div>
-             <a href="/logs" className="text-sm font-medium text-neutral-400 hover:text-white transition-colors">Logs Database</a>
-             <a href="/admin" className="text-sm font-medium text-neutral-400 hover:text-white transition-colors">Admin Portal</a>
+             <a href="/logs" className="text-xs sm:text-sm font-medium text-neutral-400 hover:text-white transition-colors">Logs Database</a>
+             <a href="/admin" className="text-xs sm:text-sm font-medium text-neutral-400 hover:text-white transition-colors">Admin Portal</a>
           </div>
         </div>
       </header>
@@ -247,7 +247,7 @@ export default function Dashboard() {
 
         <div className="lg:col-span-9 space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 rounded-2xl overflow-hidden bg-neutral-900 border border-white/5 shadow-2xl relative flex items-center justify-center group min-h-[400px] max-h-[75vh]">
+            <div className="lg:col-span-2 rounded-2xl overflow-hidden bg-neutral-900 border border-white/5 shadow-2xl relative flex items-center justify-center group min-h-[250px] md:min-h-[400px] max-h-[75vh]">
               {useMemo(() => state.monitoring ? (
                 <img src="/api/video_feed" alt="Live Feed" className="w-full h-full object-contain" />
               ) : (
@@ -348,12 +348,12 @@ export default function Dashboard() {
                 ) : (
                   state.history.map((log: any, idx) => (
                     <details key={idx} className="group bg-neutral-900/50 rounded-xl border border-white/5 overflow-hidden">
-                      <summary className="flex items-center justify-between p-4 cursor-pointer hover:bg-neutral-800/50 transition-colors list-none">
-                        <div className="flex items-center space-x-4">
-                          <span className={`px-2.5 py-1 rounded-md text-xs font-bold tracking-wide ${log.Severity === 'HIGH' ? 'bg-rose-500/20 text-rose-400' : log.Severity === 'MEDIUM' ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                      <summary className="flex items-start sm:items-center justify-between p-4 cursor-pointer hover:bg-neutral-800/50 transition-colors list-none gap-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 sm:space-x-0">
+                          <span className={`w-fit px-2.5 py-1 rounded-md text-xs font-bold tracking-wide ${log.Severity === 'HIGH' ? 'bg-rose-500/20 text-rose-400' : log.Severity === 'MEDIUM' ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
                             {log.Severity}
                           </span>
-                          <span className="text-sm font-medium text-white">{log.Type}</span>
+                          <span className="text-sm font-medium text-white break-words">{log.Type}</span>
                           <span className="text-xs text-neutral-400">{log.Time}</span>
                         </div>
                         <svg className="w-5 h-5 text-neutral-500 group-open:rotate-180 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
