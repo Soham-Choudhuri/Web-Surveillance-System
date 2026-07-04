@@ -72,6 +72,7 @@ export default function DispatchCenter() {
       
       const targetAudio = audioRefs[normalizedSeverity as keyof typeof audioRefs]?.current;
       if (targetAudio) {
+        targetAudio.loop = true; // Real incidents loop continuously
         targetAudio.play().catch(e => console.log("Audio play prevented:", e));
       }
     } else {
@@ -102,6 +103,7 @@ export default function DispatchCenter() {
     if (severity !== 'STOP') {
       const target = audioRefs[severity as keyof typeof audioRefs]?.current;
       if (target) {
+        target.loop = false; // Test buttons only play once
         target.play().catch(e => console.log("Test play failed:", e));
       }
     }
@@ -135,9 +137,9 @@ export default function DispatchCenter() {
   return (
     <div className={`min-h-screen transition-colors duration-300 flex flex-col font-sans ${bgClass} text-white`}>
       {/* Hidden Audio Elements */}
-      <audio ref={audioRefs.CRITICAL} src="/sounds/critical.mp3" loop preload="auto" />
-      <audio ref={audioRefs.HIGH} src="/sounds/high.mp3" loop preload="auto" />
-      <audio ref={audioRefs.MEDIUM} src="/sounds/medium.mp3" loop preload="auto" />
+      <audio ref={audioRefs.CRITICAL} src="/sounds/critical.mp3" preload="auto" />
+      <audio ref={audioRefs.HIGH} src="/sounds/high.mp3" preload="auto" />
+      <audio ref={audioRefs.MEDIUM} src="/sounds/medium.mp3" preload="auto" />
       <audio ref={audioRefs.LOW} src="/sounds/low.mp3" preload="auto" />
 
       <header className="border-b border-white/10 bg-black/50 backdrop-blur-xl p-4 md:p-6">
