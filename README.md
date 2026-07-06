@@ -4,7 +4,9 @@ AwareX is a next-generation, deeply autonomous AI surveillance system. Unlike tr
 
 It acts as a tireless, expert security analyst that actively watches camera feeds, listens to audio anomalies, and immediately pages human authorities via WhatsApp or SMS the moment an emergency occurs.
 
-See **[Changelog](docs/Changelog.md)** for recent architectural changes, new features, additions and fixes and improvements added to the project.
+See **[Changelog](docs/Changelog.md)** for recent architectural changes, new features, additions, fixes, and improvements added to the project.
+
+---
 
 ## Key Features
 
@@ -26,16 +28,53 @@ See **[Changelog](docs/Changelog.md)** for recent architectural changes, new fea
 - All analysis logs are permanently saved to a local **SQLite Database**.
 - View, search, and manage historical threats securely via the passwordless Admin Logs portal.
 
-## Quick Start
+---
 
-1. Ensure you have the required portable toolchains (Python, Node.js, Ollama) installed and configured on your host machine.
-2. Clone the repository and execute the unified launch script:
-   ```cmd
-   run.bat
-   ```
-3. The script will automatically start the Ollama Engine, launch the FastAPI Python backend, compile the Next.js frontend, and open a terminal for you.
-4. Navigate to `http://localhost:3000` to view the dashboard!
+## The "Bare-Metal" Installation Guide
 
-## Documentation & Guides
-- **[Remote Access & VPN Guide](docs/tailscale_setup_guide.md)**: Learn how to set up Tailscale to securely access your AwareX dashboard and video feeds from anywhere in the world, completely bypassing Windows Firewall limitations.
-- **[Twilio Alerting Setup Guide](docs/twilio_free_setup_guide.md)**: A step-by-step walkthrough for configuring the free Twilio SMS and WhatsApp integration to receive autonomous alerts.
+*Why no Docker?* AwareX requires extremely fast, low-level access to your Graphics Card (for AI reasoning), your Microphone (for audio anomalies), and USB hardware (for Webcams). Virtualizing this hardware passthrough inside Docker on Windows/Mac is notoriously difficult. 
+
+For maximum performance, zero latency, and zero configuration headaches, AwareX is designed to run **"bare-metal"** directly on your host machine.
+
+### Step 1: System Prerequisites
+Before downloading AwareX, you need three standard developer tools installed on your computer:
+1. **Python (3.10+)**: The engine for our backend logic. [Download Here](https://www.python.org/downloads/) *(Ensure you check the box that says "Add Python to PATH" during installation!)*
+2. **Node.js (v18+)**: The engine for our Next.js frontend UI. [Download Here](https://nodejs.org/)
+3. **Ollama**: The engine that runs local AI models entirely offline on your GPU. [Download Here](https://ollama.com/download)
+
+### Step 2: Clone the Repository
+Download this repository as a `.zip` file from the top right of this page, or clone it via git:
+```cmd
+git clone https://github.com/Soham-Choudhuri/Web-Surveillance-System.git
+cd Web-Surveillance-System
+```
+
+### Step 3: 1-Click Launch
+Double-click the **`run.bat`** file in the project folder. 
+
+The launch script is completely automated. On its very first run, it will do all the heavy lifting for you:
+- Download and install all required Python libraries (FastAPI, OpenCV, etc.).
+- Download and build all Next.js frontend dependencies.
+- Safely boot up the Ollama background engine.
+- Launch the AwareX UI in your default web browser.
+
+### Step 4: Download an AI Model (In-Browser)
+Once the dashboard opens (`http://localhost:3000`), you need an AI model to perform the reasoning:
+1. Click **Admin Portal** in the top right navigation bar.
+2. Scroll to the **Model Configuration** section.
+3. Type in the name of a lightweight, highly capable vision model. *(We highly recommend `moondream` or `llama3.2-vision` for decent hardware).*
+4. Click **Download Model**. You will see a live progress bar right on the screen.
+5. Once downloaded, navigate back to the main dashboard, select your webcam from the dropdown, and click **Start Stream**!
+
+---
+
+## Documentation & Advanced Guides
+Because AwareX is designed to run locally on your own hardware for maximum privacy and zero latency, it is isolated from the internet by default. We provide the following guides to help you safely extend its capabilities to the outside world:
+
+- **[Remote Access & VPN Guide](docs/tailscale_setup_guide.md)**
+  - **Why you need this**: If you leave the house and want to view your live camera feeds or check the Admin Dashboard from your mobile phone, your home router's firewall will block you.
+  - **How it works**: This guide walks you through installing Tailscale (a free, zero-configuration VPN). It creates a secure, encrypted tunnel directly to your machine, completely bypassing port-forwarding headaches and allowing you to securely view the dashboard from anywhere.
+
+- **[Twilio Alerting Setup Guide](docs/twilio_free_setup_guide.md)**
+  - **Why you need this**: AwareX can detect a threat autonomously, but it needs a way to instantly wake you up or notify you when you aren't staring at the screen.
+  - **How it works**: This step-by-step guide helps you set up a free Twilio developer account. It grants AwareX the ability to physically push automated SMS or WhatsApp messages containing the incident details directly to your phone the exact second an emergency occurs.
