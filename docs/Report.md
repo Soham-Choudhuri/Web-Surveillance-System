@@ -113,4 +113,3 @@ def evaluate_threat(incident_report):
 3.  **Audio Analytics**: Using microphones to detect screams or glass breaking to trigger the camera system.
 
 ---
-*Generated for Final Year Engineering Project Documentation.*

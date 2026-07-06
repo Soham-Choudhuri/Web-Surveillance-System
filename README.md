@@ -32,7 +32,9 @@ See **[Changelog](docs/Changelog.md)** for recent architectural changes, new fea
 
 ## The "Bare-Metal" Installation Guide
 
-*Why no Docker?* AwareX requires extremely fast, low-level access to your Graphics Card (for AI reasoning), your Microphone (for audio anomalies), and USB hardware (for Webcams). Virtualizing this hardware passthrough inside Docker on Windows/Mac is notoriously difficult. 
+*We didn't use Docker to containerize this project. Why?*
+
+AwareX requires extremely fast, low-level access to a Graphics Card (for AI reasoning), a Microphone (for audio anomalies), and USB hardware (for Webcams). Virtualizing this hardware passthrough inside Docker on any OS is notoriously difficult and can cause performance issues.
 
 For maximum performance, zero latency, and zero configuration headaches, AwareX is designed to run **"bare-metal"** directly on your host machine.
 
@@ -58,13 +60,16 @@ The launch script is completely automated. On its very first run, it will do all
 - Safely boot up the Ollama background engine.
 - Launch the AwareX UI in your default web browser.
 
-### Step 4: Download an AI Model (In-Browser)
-Once the dashboard opens (`http://localhost:3000`), you need an AI model to perform the reasoning:
-1. Click **Admin Portal** in the top right navigation bar.
-2. Scroll to the **Model Configuration** section.
-3. Type in the name of a lightweight, highly capable vision model. *(We highly recommend `moondream` or `llama3.2-vision` for decent hardware).*
-4. Click **Download Model**. You will see a live progress bar right on the screen.
-5. Once downloaded, navigate back to the main dashboard, select your webcam from the dropdown, and click **Start Stream**!
+### Step 4: Configure an AI Model (In-Browser)
+Once the dashboard opens (`http://localhost:3000`), you need an AI model to perform the visual reasoning. Click **Admin Portal** in the top right navigation bar and scroll down to the **Model Configuration** section. You have two choices:
+
+**Option A: Local Processing (Requires decent hardware)**
+If you want 100% offline privacy, select `ollama` as your provider. Type in the name of a lightweight vision model (we highly recommend `moondream` or `llama3.2-vision`) and click **Download Model**. You will see a live progress bar right on the screen.
+
+**Option B: Cloud Processing (Lightning fast, requires API Key)**
+If your hardware is older or you want maximum speed, select a cloud provider like `google` (for Gemini 1.5) or `groq` (for Llama 3.2 Vision). Simply paste in your API key and click **Save Configuration**. No massive downloads required!
+
+Once configured, navigate back to the main dashboard, select your webcam from the dropdown, and click **Start Stream**!
 
 ---
 

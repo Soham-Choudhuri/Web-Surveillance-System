@@ -68,23 +68,18 @@ The ATM Surveillance project comes with a built-in admin dashboard that manages 
 
 ## Step 5: Enable Two-Way Communication (Webhooks)
 
-Your system supports receiving replies (like texting "Status" or "Stop" to pause monitoring). For Twilio to send these replies to your local computer, you need to expose your local port `8000` to the internet using **ngrok**.
+Your system supports receiving replies (like texting "Status" or "Stop" to pause monitoring). For Twilio to send these replies to your local computer, you need to securely expose your local backend to the internet. 
 
-1. Download and install [ngrok](https://ngrok.com/).
-2. Open a new terminal and run:
-   ```bash
-   ngrok http 8000
-   ```
-3. Copy the **Forwarding URL** provided by ngrok (it will look like `https://<random-id>.ngrok-free.app`).
-4. **Link it to Twilio:**
-   - **For SMS:** Go to **Phone Numbers** -> **Manage** -> **Active Numbers** in Twilio. Click your number. Scroll to **Messaging**, and under "A MESSAGE COMES IN", paste your ngrok URL followed by `/sms-webhook` (e.g., `https://abc.ngrok-free.app/sms-webhook`).
-   - **For WhatsApp:** Go to **Messaging** -> **Settings** -> **WhatsApp Sandbox Settings**. In the "WHEN A MESSAGE COMES IN" field, paste your ngrok URL followed by `/whatsapp-webhook`.
-5. Save the configuration in Twilio.
+We highly recommend using **Tailscale Funnel** (see **[Tailscale Setup Guide]((tailscale_setup_guide.md))**) because it gives you a **permanent**, highly secure URL for free!
 
-> [!WARNING]
-> Because you are using the free version of ngrok, your URL will change every time you restart ngrok. You will need to update the webhook URL in Twilio whenever you restart ngrok.
+1. Generate your permanent public URL using Tailscale Funnel. On your Host PC, open a terminal and run `tailscale funnel 3000`. This will give you a permanent URL (e.g., `https://awarex.tailc61015.ts.net`).
+2. **Link it to Twilio:**
+   - **For SMS:** Go to **Phone Numbers** -> **Manage** -> **Active Numbers** in Twilio. Click your number. Scroll to **Messaging**, and under "A MESSAGE COMES IN", paste your Tailscale URL followed by `/sms-webhook` (e.g., `https://awarex.tailc61015.ts.net/sms-webhook`).
+   - **For WhatsApp:** Go to **Messaging** -> **Settings** -> **WhatsApp Sandbox Settings**. In the "WHEN A MESSAGE COMES IN" field, paste your Tailscale URL followed by `/whatsapp-webhook` (e.g., `https://awarex.tailc61015.ts.net/whatsapp-webhook`).
+3. Save the configuration in Twilio.
 
----
+> [!TIP]
+> Unlike other tools like `ngrok` which change your URL every time you restart your computer, your Tailscale Funnel URL is permanent! You will never need to update Twilio again.
 
 ## Step 6: Test the System!
 

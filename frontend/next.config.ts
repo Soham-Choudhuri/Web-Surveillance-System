@@ -31,6 +31,14 @@ const nextConfig: NextConfig = {
       {
         source: '/api/:path*',
         destination: 'http://127.0.0.1:8000/api/:path*'
+      },
+      {
+        source: '/sms-webhook',
+        destination: 'http://127.0.0.1:8000/sms-webhook'
+      },
+      {
+        source: '/whatsapp-webhook',
+        destination: 'http://127.0.0.1:8000/whatsapp-webhook'
       }
     ];
   }
