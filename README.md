@@ -76,6 +76,10 @@ Once configured, navigate back to the main dashboard, select your webcam from th
 ## Documentation & Advanced Guides
 Because AwareX is designed to run locally on your own hardware for maximum privacy and zero latency, it is isolated from the internet by default. We provide the following guides to help you safely extend its capabilities to the outside world:
 
+- **[Mobile Phone Camera Setup Guide](docs/mobile_camera_guide.md)**
+  - **Why you need this**: If you don't have a desktop webcam, or if you want to place a wireless camera in another room.
+  - **How it works**: Explains how to use a free IP Camera app to turn your old smartphone into a high-quality, wireless surveillance camera that connects directly into the AwareX dashboard.
+
 - **[Remote Access & VPN Guide](docs/tailscale_setup_guide.md)**
   - **Why you need this**: If you leave the house and want to view your live camera feeds or check the Admin Dashboard from your mobile phone, your home router's firewall will block you.
   - **How it works**: This guide walks you through installing Tailscale (a free, zero-configuration VPN). It creates a secure, encrypted tunnel directly to your machine, completely bypassing port-forwarding headaches and allowing you to securely view the dashboard from anywhere.
