@@ -287,6 +287,15 @@ def generate_frames():
             state.monitoring = False
             break
             
+        if getattr(state, "is_analyzing", False) and getattr(state, "last_yielded_frame", None) is not None:
+            # Dynamic Pausing: Keep HTTP MJPEG stream alive while AI is reasoning
+            ret, buffer = cv2.imencode('.jpg', state.last_yielded_frame)
+            if ret:
+                frame_bytes = buffer.tobytes()
+                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            time.sleep(0.1) # 10 FPS keep-alive
+            continue
+            
         success, frame = state.cap.read()
         if not success:
             state.monitoring = False
@@ -371,45 +380,55 @@ def generate_frames():
                         break
 
                 # AI Reasoning (Strictly respects user interval, but includes context if present)
-                if current_time - state.last_analysis_time >= state.analysis_interval:
+                if current_time - state.last_analysis_time >= state.analysis_interval and not getattr(state, "is_analyzing", False):
                     pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                    try:
-                        state.is_analyzing = True
-                        
-                        context_str = ""
-                        if state.audio_context:
-                            context_str += f"AUDIO ALERT: {state.audio_context}\n"
-                            state.audio_context = None # Reset flag after using it
-                        if loitering_context:
-                            context_str += f"BEHAVIOR ALERT: {loitering_context}\n"
+                    
+                    def background_analysis_task(img, det, ctx_str):
+                        try:
+                            state.is_analyzing = True
+                            incident_report = agent.analyze_incident(img, det, ctx_str)
+                            state.latest_report = incident_report
                             
-                        incident_report = agent.analyze_incident(pil_image, detections, context_str)
-                        state.latest_report = incident_report
-                        
-                        # Decision Engine
-                        severity = incident_report.get("severity", "LOW").upper()
-                        classification = incident_report.get("classification", "Normal")
-                        
-                        # Update threat level string
-                        state.threat_level = f"{severity} ({classification})"
-                        
-                        action_log, requires_alert, alert_msg = evaluate_threat(incident_report)
-                        
-                        # Log to DB
-                        description_text = incident_report.get("description", classification)
-                        if not isinstance(description_text, str):
-                            description_text = classification
-                        insert_log("Analysis", severity, description_text, incident_report)
-                        
-                        if requires_alert:
-                            send_alert(alert_msg)
+                            # Decision Engine
+                            severity = incident_report.get("severity", "LOW").upper()
+                            classification = incident_report.get("classification", "Normal")
                             
-                    except Exception as e:
-                        logger.error(f"Error during incident analysis: {e}")
-                    finally:
-                        state.is_analyzing = False
+                            # Update threat level string
+                            state.threat_level = f"{severity} ({classification})"
+                            
+                            action_log, requires_alert, alert_msg = evaluate_threat(incident_report)
+                            
+                            # Log to DB
+                            description_text = incident_report.get("description", classification)
+                            if not isinstance(description_text, str):
+                                description_text = classification
+                            insert_log("Analysis", severity, description_text, incident_report)
+                            
+                            if requires_alert:
+                                send_alert(alert_msg)
+                                
+                        except Exception as e:
+                            logger.error(f"Error during incident analysis: {e}")
+                        finally:
+                            state.is_analyzing = False
+                            state.last_analysis_time = datetime.now().timestamp()
+                            
+                            # If webcam, flush the buffer so it doesn't replay 10 seconds of old frames
+                            if getattr(state, "input_source", "") != "Upload Video" and getattr(state, "cap", None):
+                                for _ in range(30):
+                                    state.cap.read()
+                    
+                    context_str = ""
+                    if getattr(state, "audio_context", None):
+                        context_str += f"AUDIO ALERT: {state.audio_context}\n"
+                        state.audio_context = None # Reset flag after using it
+                    if loitering_context:
+                        context_str += f"BEHAVIOR ALERT: {loitering_context}\n"
                         
-                    state.last_analysis_time = datetime.now().timestamp()
+                    threading.Thread(target=background_analysis_task, args=(pil_image, detections, context_str)).start()
+
+        # Update last yielded frame for dynamic pausing
+        state.last_yielded_frame = frame
 
         # Encode frame to JPEG
         ret, buffer = cv2.imencode('.jpg', frame)
