@@ -12,6 +12,12 @@ import numpy as np
 import threading
 import subprocess
 import scipy.io.wavfile as wav
+import csv
+from backend import download_models
+try:
+    import tensorflow as tf
+except ImportError:
+    tf = None
 try:
     import sounddevice as sd
     AUDIO_AVAILABLE = True
@@ -20,7 +26,7 @@ except ImportError:
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, Request, Form, UploadFile, File
+from fastapi import FastAPI, Request, Form, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -40,25 +46,82 @@ logger = logging.getLogger(__name__)
 # Global Ollama Process reference
 ollama_process = None
 
+# Download and Load YAMNet
+download_models.download_yamnet()
+yamnet_interpreter = None
+yamnet_classes = []
+if tf:
+    try:
+        yamnet_interpreter = tf.lite.Interpreter(model_path="models/yamnet.tflite")
+        yamnet_interpreter.allocate_tensors()
+        yamnet_input_details = yamnet_interpreter.get_input_details()
+        yamnet_output_details = yamnet_interpreter.get_output_details()
+        
+        with open("models/yamnet_class_map.csv", "r") as f:
+            reader = csv.reader(f)
+            next(reader) # skip header
+            for row in reader:
+                yamnet_classes.append(row[2])
+        logger.info("YAMNet Audio Engine loaded successfully.")
+    except Exception as e:
+        logger.error(f"Failed to load YAMNet: {e}")
+
 def get_config_dict():
     default_config = {
         "ollama_models_path": "",
         "active_mode": "local",
         "provider": "ollama",
         "model_name": config.LOCAL_LLM_MODEL if hasattr(config, "LOCAL_LLM_MODEL") else "moondream",
-        "api_key": "",
+        "cloud_models": [], # e.g. [{"id": 1, "provider": "gemini", "model": "gemini-1.5-flash", "api_key": "...", "base_url": "", "is_primary": True}]
         "twilio_sid": "",
         "twilio_auth": "",
         "twilio_type": "SMS",
         "twilio_from": "",
         "twilio_to": "",
-        "alerts_enabled": False
+        "alerts_enabled": False,
+        "allowed_origins": []
     }
     CONFIG_FILE = "model_config.json"
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r") as f:
-                return json.load(f)
+                loaded = json.load(f)
+                
+                # Migration logic: moving api_key/api_keys to the new cloud_models array
+                if "cloud_models" not in loaded:
+                    loaded["cloud_models"] = []
+                    # Try to migrate from legacy api_keys
+                    if "api_keys" in loaded and isinstance(loaded["api_keys"], dict):
+                        for prov, key in loaded["api_keys"].items():
+                            loaded["cloud_models"].append({
+                                "id": f"migrated_{prov}",
+                                "provider": prov,
+                                "model": loaded.get("model_name", "default-model"),
+                                "api_key": key,
+                                "base_url": "",
+                                "is_primary": (prov == loaded.get("provider"))
+                            })
+                    # Or migrate from legacy api_key
+                    elif "api_key" in loaded and loaded["api_key"] and loaded.get("provider") in ["gemini", "groq", "huggingface", "mistral"]:
+                        loaded["cloud_models"].append({
+                            "id": "migrated_single",
+                            "provider": loaded["provider"],
+                            "model": loaded.get("model_name", "default-model"),
+                            "api_key": loaded["api_key"],
+                            "base_url": "",
+                            "is_primary": True
+                        })
+                        
+                # Ensure exactly one primary model if active_mode is cloud
+                if loaded.get("active_mode") == "cloud" and loaded.get("cloud_models"):
+                    if not any(m.get("is_primary") for m in loaded["cloud_models"]):
+                        loaded["cloud_models"][0]["is_primary"] = True
+                        
+                # Merge defaults
+                for k, v in default_config.items():
+                    if k not in loaded:
+                        loaded[k] = v
+                return loaded
         except:
             return default_config
     return default_config
@@ -137,6 +200,7 @@ class AppState:
         self.last_gray_frame = None
         self.audio_context = None
         self.person_trackers = {}
+        self.threat_trackers = {}
         self.fps = 30.0
         self.input_source = "Webcam"
         self.audio_data = None
@@ -152,6 +216,25 @@ agent = IncidentAgent()
 CONFIG_FILE = "model_config.json"
 STATUS_FILE = "status.json"
 
+client_camera_frame = None
+
+@app.websocket("/api/ws/client_stream")
+async def websocket_client_stream(websocket: WebSocket):
+    global client_camera_frame
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_text()
+            if data.startswith("data:image/jpeg;base64,"):
+                b64_data = data.split(",")[1]
+                img_data = base64.b64decode(b64_data)
+                np_arr = np.frombuffer(img_data, np.uint8)
+                img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+                if img is not None:
+                    client_camera_frame = img
+    except WebSocketDisconnect:
+        pass
+
 @app.get("/api/state")
 def get_state():
     return {
@@ -160,7 +243,8 @@ def get_state():
         "object_count": state.object_count,
         "latest_report": state.latest_report,
         "history": get_logs(10),
-        "is_analyzing": state.is_analyzing
+        "is_analyzing": state.is_analyzing,
+        "api_stats": agent.get_api_stats()
     }
 
 def audio_monitor_thread():
@@ -169,11 +253,30 @@ def audio_monitor_thread():
         
     def audio_callback(indata, frames, time_info, status):
         volume_norm = np.linalg.norm(indata)*10
-        if volume_norm > 150: # Loud noise threshold
-            state.audio_context = "LOUD NOISE DETECTED (Possible glass breaking, shouting, or impact)"
+        if volume_norm > 100: # Slightly lower threshold before engaging YAMNet to be safe
+            if yamnet_interpreter:
+                try:
+                    # YAMNet expects a 1D float32 waveform at 16kHz
+                    waveform = indata.flatten().astype(np.float32)
+                    yamnet_interpreter.set_tensor(yamnet_input_details[0]['index'], waveform)
+                    yamnet_interpreter.invoke()
+                    scores = yamnet_interpreter.get_tensor(yamnet_output_details[0]['index'])
+                    top_class_index = scores.mean(axis=0).argmax()
+                    top_class_name = yamnet_classes[top_class_index]
+                    
+                    critical_sounds = ["Screaming", "Glass", "Gunshot", "Explosion", "Siren", "Alarm", "Gun", "Shatter"]
+                    if any(c.lower() in top_class_name.lower() for c in critical_sounds):
+                        state.audio_context = f"CRITICAL AUDIO DETECTED: {top_class_name}"
+                    else:
+                        state.audio_context = f"Loud noise detected: {top_class_name}"
+                except Exception as e:
+                    state.audio_context = "LOUD NOISE DETECTED (Classification failed)"
+            else:
+                state.audio_context = "LOUD NOISE DETECTED (Possible glass breaking, shouting, or impact)"
             
     try:
-        with sd.InputStream(callback=audio_callback):
+        # YAMNet natively expects 16000Hz. We capture 16000 samples (1 second).
+        with sd.InputStream(samplerate=16000, channels=1, callback=audio_callback, blocksize=16000, dtype='float32'):
             while state.monitoring:
                 time.sleep(0.5)
     except Exception as e:
@@ -190,8 +293,11 @@ def upload_video(file: UploadFile = File(...)):
         # Rip audio using FFmpeg
         audio_path = tempfile.mktemp(suffix=".wav")
         # Subprocess FFmpeg - using shell=False, redirecting output
-        subprocess.run(["ffmpeg", "-y", "-i", tfile.name, "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "1", audio_path], 
-                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            subprocess.run(["ffmpeg", "-y", "-i", tfile.name, "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "1", audio_path], 
+                           check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            logger.warning(f"FFmpeg audio extraction failed or FFmpeg not installed. Proceeding with video only. Error: {e}")
         
         # Load audio into memory
         if os.path.exists(audio_path):
@@ -231,33 +337,47 @@ def start_monitoring(source: str = Form(...), interval: int = Form(10), video_pa
                 logger.error(f"Could not open audio stream: {e}")
                 state.audio_stream = None
     else:
-        cam_input = 0
-        if camera_url:
-            if camera_url.isdigit():
-                cam_input = int(camera_url)
-            else:
-                cam_input = camera_url
-                
-        if isinstance(cam_input, int):
-            # Try DirectShow first for Windows local webcams, fallback to default
-            state.cap = cv2.VideoCapture(cam_input, cv2.CAP_DSHOW)
-            if not state.cap.isOpened():
-                state.cap = cv2.VideoCapture(cam_input)
+        if source == "Client Camera":
+            state.cap = "WebSocket"
+            state.fps = 15.0
+            state.audio_data = None
         else:
-            # RTSP/IP cameras
-            state.cap = cv2.VideoCapture(cam_input)
+            cam_input = 0
+            if camera_url:
+                if camera_url.isdigit():
+                    cam_input = int(camera_url)
+                else:
+                    cam_input = camera_url
+                    
+            if isinstance(cam_input, int):
+                # Try DirectShow first for Windows local webcams, fallback to default
+                state.cap = cv2.VideoCapture(cam_input, cv2.CAP_DSHOW)
+                if not state.cap.isOpened():
+                    state.cap = cv2.VideoCapture(cam_input)
+            else:
+                # RTSP/IP cameras
+                state.cap = cv2.VideoCapture(cam_input)
             
-        if not state.cap.isOpened():
+        if state.cap != "WebSocket" and (not state.cap or not state.cap.isOpened()):
             logger.error(f"Failed to open camera: {cam_input}")
             return JSONResponse({"status": "Error", "message": f"Camera access failed: {cam_input}"}, status_code=500)
+            
+        # Eliminate latency drift by forcing OpenCV to drop old frames instead of queueing them
+        if state.cap != "WebSocket":
+            state.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             
         state.fps = 30.0
         state.audio_data = None # Clear any previous video audio
         
     state.monitoring = True
-    state.last_analysis_time = 0
+    state.monitoring_run_id = getattr(state, "monitoring_run_id", 0) + 1
+    if source == "Upload Video":
+        state.last_analysis_time = 0
+    else:
+        state.last_analysis_time = datetime.now().timestamp() # Warm-up period for live cameras
     state.analysis_interval = interval
     state.person_trackers = {}
+    state.threat_trackers = {}
     
     if AUDIO_AVAILABLE and source != "Upload Video":
         threading.Thread(target=audio_monitor_thread, daemon=True).start()
@@ -266,50 +386,58 @@ def start_monitoring(source: str = Form(...), interval: int = Form(10), video_pa
 
 @app.post("/api/stop")
 def stop_monitoring():
+    # Only set the flag. The generator thread safely releases the camera in its finally block.
+    # This completely prevents thread-safety segfaults inside OpenCV.
     state.monitoring = False
-    if state.cap:
-        state.cap.release()
-        state.cap = None
-    if state.audio_stream:
-        state.audio_stream.stop()
-        state.audio_stream.close()
-        state.audio_stream = None
-    state.threat_level = "Waiting..."
-    state.latest_report = None
-    state.object_count = 0
-    state.last_gray_frame = None
+    state.is_analyzing = False # Immediately clear UI overlay
     return {"status": "Stopped"}
 
 def generate_frames():
+    try:
+        yield from _generate_frames_internal()
+    finally:
+        if getattr(state, "cap", None):
+            if state.cap != "WebSocket":
+                state.cap.release()
+            state.cap = None
+        if getattr(state, "audio_stream", None):
+            state.audio_stream.stop()
+            state.audio_stream.close()
+            state.audio_stream = None
+        state.threat_level = "Waiting..."
+        state.latest_report = None
+        state.object_count = 0
+        state.last_gray_frame = None
+
+def _generate_frames_internal():
     frame_count = 0
     while True:
-        if not state.monitoring or state.cap is None or not state.cap.isOpened():
+        if not state.monitoring or state.cap is None or (state.cap != "WebSocket" and not state.cap.isOpened()):
             state.monitoring = False
             break
             
         if getattr(state, "is_analyzing", False) and getattr(state, "last_yielded_frame", None) is not None:
-            # Dynamic Pausing: Keep HTTP MJPEG stream alive while AI is reasoning
-            ret, buffer = cv2.imencode('.jpg', state.last_yielded_frame)
-            if ret:
-                frame_bytes = buffer.tobytes()
-                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-            time.sleep(0.1) # 10 FPS keep-alive
-            continue
+            if getattr(state, "input_source", "") == "Upload Video":
+                # Dynamic Pausing: Keep HTTP MJPEG stream alive while AI is reasoning for video files
+                ret, buffer = cv2.imencode('.jpg', state.last_yielded_frame)
+                if ret:
+                    frame_bytes = buffer.tobytes()
+                    yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+                time.sleep(0.1) # 10 FPS keep-alive for video files
+                continue
             
-        success, frame = state.cap.read()
+        if state.cap == "WebSocket":
+            if client_camera_frame is None:
+                time.sleep(0.05)
+                continue
+            frame = client_camera_frame.copy()
+            client_camera_frame = None # Consume the frame to prevent MJPEG spam loop
+            success = True
+        else:
+            success, frame = state.cap.read()
+            
         if not success:
             state.monitoring = False
-            if state.cap:
-                state.cap.release()
-                state.cap = None
-            if state.audio_stream:
-                state.audio_stream.stop()
-                state.audio_stream.close()
-                state.audio_stream = None
-            state.threat_level = "Waiting..."
-            state.latest_report = None
-            state.object_count = 0
-            state.last_gray_frame = None
             break
 
         frame_count += 1
@@ -359,12 +487,25 @@ def generate_frames():
                 detections = [d["label"] for d in det_list]
                 state.object_count = len(detections)
                 
-                # Loitering Logic
+                # Combinatorial Logic (Person + Weapon)
                 current_person_ids = []
+                weapon_classes = ["knife", "baseball bat", "scissors"]
+                weapon_present = any(d["label"].lower() in weapon_classes for d in det_list)
+                
                 for det in det_list:
                     if det["label"].lower() == "person" and det.get("track_id", -1) != -1:
                         tid = det["track_id"]
                         current_person_ids.append(tid)
+                        
+                        # Combinatorial Tracking
+                        if weapon_present:
+                            if tid not in state.threat_trackers:
+                                state.threat_trackers[tid] = current_time
+                        else:
+                            if tid in state.threat_trackers:
+                                del state.threat_trackers[tid]
+                                
+                        # Standard Loitering
                         if tid not in state.person_trackers:
                             state.person_trackers[tid] = current_time
                             
@@ -372,21 +513,66 @@ def generate_frames():
                 for tid in list(state.person_trackers.keys()):
                     if tid not in current_person_ids:
                         del state.person_trackers[tid]
+                for tid in list(state.threat_trackers.keys()):
+                    if tid not in current_person_ids:
+                        del state.threat_trackers[tid]
+                        
+                combinatorial_context = None
+                for tid, first_seen in state.threat_trackers.items():
+                    if current_time - first_seen > 3.0: # 3.0 seconds duration rule for weapons
+                        combinatorial_context = "A person has been holding a suspected weapon (knife/bat) for over 3 seconds."
+                        break
                         
                 loitering_context = None
                 for tid, first_seen in state.person_trackers.items():
-                    if current_time - first_seen > 10: # 10 seconds demo threshold
+                    if current_time - first_seen > 10: # 10 seconds demo threshold for loitering
                         loitering_context = "A person has been loitering without interacting for over 10 seconds."
                         break
 
+                # The VLM Gate: Only trigger if critical audio, weapon combination, or prolonged loitering is detected
+                trigger_vlm = False
+                ctx_string = ""
+                
+                if getattr(state, "audio_context", None) and "CRITICAL" in state.audio_context:
+                    trigger_vlm = True
+                    ctx_string += f"Audio Alert: {state.audio_context}. "
+                
+                if combinatorial_context:
+                    trigger_vlm = True
+                    ctx_string += f"Visual Alert: {combinatorial_context} "
+                elif loitering_context:
+                    trigger_vlm = True
+                    ctx_string += f"Visual Alert: {loitering_context} "
+
+                # Dynamic Throttling Logic
+                actual_interval = state.analysis_interval
+                stats = agent.get_api_stats()
+                cfg = agent._load_config()
+                if cfg.get("active_mode") == "cloud":
+                    cloud_models = cfg.get("cloud_models", [])
+                    primary = next((m for m in cloud_models if m.get("is_primary")), None)
+                    if primary:
+                        p_stats = stats.get(primary.get("provider", ""), {})
+                        used = p_stats.get("rpm_used", 0)
+                        limit = p_stats.get("rpm_limit", 30)
+                        if limit > 0 and used >= limit - 2:
+                            # Dangerously close to limit, throttle!
+                            actual_interval = max(actual_interval, 15) # Force at least 15s delay
+
                 # AI Reasoning (Strictly respects user interval, but includes context if present)
-                if current_time - state.last_analysis_time >= state.analysis_interval and not getattr(state, "is_analyzing", False):
+                if trigger_vlm and (current_time - state.last_analysis_time >= actual_interval) and not getattr(state, "is_analyzing", False):
                     pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                     
-                    def background_analysis_task(img, det, ctx_str):
+                    def background_analysis_task(img, det, ctx_str, run_id):
                         try:
                             state.is_analyzing = True
+                            # Pass our powerful new context string directly to the VLM
                             incident_report = agent.analyze_incident(img, det, ctx_str)
+                            
+                            # Abort all downstream processes if stream was stopped or restarted!
+                            if not getattr(state, "monitoring", False) or getattr(state, "monitoring_run_id", 0) != run_id:
+                                return
+                                
                             state.latest_report = incident_report
                             
                             # Decision Engine
@@ -410,13 +596,9 @@ def generate_frames():
                         except Exception as e:
                             logger.error(f"Error during incident analysis: {e}")
                         finally:
-                            state.is_analyzing = False
-                            state.last_analysis_time = datetime.now().timestamp()
-                            
-                            # If webcam, flush the buffer so it doesn't replay 10 seconds of old frames
-                            if getattr(state, "input_source", "") != "Upload Video" and getattr(state, "cap", None):
-                                for _ in range(30):
-                                    state.cap.read()
+                            if getattr(state, "monitoring_run_id", 0) == run_id:
+                                state.is_analyzing = False
+                                state.last_analysis_time = datetime.now().timestamp()
                     
                     context_str = ""
                     if getattr(state, "audio_context", None):
@@ -425,7 +607,7 @@ def generate_frames():
                     if loitering_context:
                         context_str += f"BEHAVIOR ALERT: {loitering_context}\n"
                         
-                    threading.Thread(target=background_analysis_task, args=(pil_image, detections, context_str)).start()
+                    threading.Thread(target=background_analysis_task, args=(pil_image, detections, context_str, getattr(state, "monitoring_run_id", 0))).start()
 
         # Update last yielded frame for dynamic pausing
         state.last_yielded_frame = frame

@@ -17,6 +17,7 @@ See **[Changelog](docs/Changelog.md)** for recent architectural changes, new fea
 
 ### Dynamic Camera Management
 - Connect any standard USB Webcam or external **RTSP / HTTP IP Camera**.
+- **Wireless Mobile Webcams**: Turn any spare Android or iOS phone into a secure, wireless security camera by streaming it directly to AwareX via Tailscale.
 - Features a zero-code **Camera Management UI** powered by SQLite, allowing operators to instantly add, test, or delete surveillance streams on the fly.
 
 ### Central Dispatch & Automated Alerting
@@ -76,10 +77,6 @@ Once configured, navigate back to the main dashboard, select your webcam from th
 ## Documentation & Advanced Guides
 Because AwareX is designed to run locally on your own hardware for maximum privacy and zero latency, it is isolated from the internet by default. We provide the following guides to help you safely extend its capabilities to the outside world:
 
-- **[Mobile Phone Camera Setup Guide](docs/mobile_camera_guide.md)**
-  - **Why you need this**: If you don't have a desktop webcam, or if you want to place a wireless camera in another room.
-  - **How it works**: Explains how to use a free IP Camera app to turn your old smartphone into a high-quality, wireless surveillance camera that connects directly into the AwareX dashboard.
-
 - **[Remote Access & VPN Guide](docs/tailscale_setup_guide.md)**
   - **Why you need this**: If you leave the house and want to view your live camera feeds or check the Admin Dashboard from your mobile phone, your home router's firewall will block you.
   - **How it works**: This guide walks you through installing Tailscale (a free, zero-configuration VPN). It creates a secure, encrypted tunnel directly to your machine, completely bypassing port-forwarding headaches and allowing you to securely view the dashboard from anywhere.
@@ -87,3 +84,7 @@ Because AwareX is designed to run locally on your own hardware for maximum priva
 - **[Twilio Alerting Setup Guide](docs/twilio_free_setup_guide.md)**
   - **Why you need this**: AwareX can detect a threat autonomously, but it needs a way to instantly wake you up or notify you when you aren't staring at the screen.
   - **How it works**: This step-by-step guide helps you set up a free Twilio developer account. It grants AwareX the ability to physically push automated SMS or WhatsApp messages containing the incident details directly to your phone the exact second an emergency occurs.
+
+- **[Mobile Phone Webcam Guide](docs/mobile_camera_guide.md)**
+  - **Why you need this**: You want a remote, wireless security camera (e.g., placing a camera in a dorm or office) but don't want to buy an expensive IP Camera.
+  - **How it works**: This guide shows you how to install an IP Camera app on any spare Android or iOS device, and securely tunnel its video feed back to your AwareX PC via Tailscale—completely free and with zero router configuration.

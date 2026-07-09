@@ -9,8 +9,10 @@ numpy
 fastapi
 uvicorn
 python-multipart
-google-generativeai
+google-genai
 groq
 requests
 sounddevice
 scipy
+tensorflow-cpu
+websockets

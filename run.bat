@@ -45,6 +45,28 @@ echo.
 
 rem Launch the servers in their own dedicated windows
 start "AI Surveillance - Backend API" cmd /k ""%VENV_DIR%\Scripts\python.exe" -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+
+rem Wait dynamically for the backend (PyTorch/YOLO) to load into memory
+echo [INFO] Waiting dynamically for AI Engine to initialize in memory...
+:waitloop
+curl -s -f http://127.0.0.1:8000/api/state >nul 2>&1
+if %errorlevel% neq 0 (
+    timeout /t 1 /nobreak >nul
+    goto waitloop
+)
+echo [INFO] AI Engine is fully loaded and listening on port 8000!
+
+rem Start Tailscale Secure Proxy if available
+where tailscale >nul 2>nul
+if %errorlevel% equ 0 (
+    echo [INFO] Tailscale detected. Clearing previous bindings to prevent port conflicts...
+    tailscale serve --https=443 off
+    echo [INFO] Binding secure public HTTPS funnel to port 3000...
+    start "Tailscale Funnel" cmd /k "tailscale funnel 3000"
+) else (
+    echo [INFO] Tailscale not detected locally. Skipping public funnel.
+)
+
 start "AI Surveillance - Web UI" cmd /k "cd frontend && npm run dev -- -H 0.0.0.0"
 
 rem Launch a fourth window that remains open and empty for your own manual commands

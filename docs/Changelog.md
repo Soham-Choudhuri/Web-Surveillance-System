@@ -1,7 +1,34 @@
 # AwareX: Multimodal Autonomous Surveillance System
 
-# Changelog: Version 7.0 (Current)
+# Changelog: Version 8.0 (Current)
 
+## 1. Evolved Gating Architecture (Zero Background Bloat)
+- **YAMNet Audio Gatekeeper**: Integrated a microscopic 4MB TensorFlow-CPU audio model (YAMNet) to monitor the host machine's microphone. It accurately classifies 521 audio events (e.g., screams, gunshots, breaking glass) in real-time, acting as a zero-latency tripwire that wakes up the VLM only during critical anomalies.
+- **Combinatorial Object Tracking**: The YOLOv8 Vision Engine was upgraded from simple presence detection to complex combinatorial tracking. The VLM gate now identifies intersections of specific classes (e.g., `Person` AND `Weapon`).
+- **Temporal State Machines**: Replaced raw frame triggering with a stateful tracker. The system now runs a strict duration rule: a person must be tracked holding a weapon for **> 3.0 seconds** before the frame is escalated to the VLM, drastically reducing false positives.
+
+## 2. Premium UI/UX Polish
+- **Dynamic Threat Visualization**: Upgraded the `Intelligence Hub` container to dynamically shift its glassmorphism border colors (e.g., pulsing red borders for `CRITICAL` threats) to draw the operator's eye immediately.
+- **Active AI Shimmer**: When the VLM is actively reasoning, the "Active Intelligence" badge on the video feed displays an animated shimmer gradient over the module, visually communicating that the neural engine is engaged.
+- **System Standby Animations**: Replaced static "Camera Offline" empty states with a glowing, smoothly pulsing `System Standby` graphic using layered blur effects.
+- **Admin Aesthetics**: Overhauled primary action buttons in the Admin Panel with translucent glassmorphism styles and glowing hover shadows.
+
+## 3. Mission-Critical Backend Robustness
+- **FFmpeg Failsafe**: Implemented a robust fallback for video uploads. If the host machine lacks FFmpeg, the backend gracefully catches the error and seamlessly processes the video stream without audio instead of crashing the API.
+- **Custom YOLO Weapons Guide**: Published a comprehensive [Custom YOLO Weights Guide](CUSTOM_WEIGHTS.md) detailing exactly how administrators can swap the default COCO proxy weights for custom-trained `.pt` firearm models.
+
+## 4. Remote Camera Tunneling (Tailscale Funnel)
+- **Client Camera WebRTC**: You can now securely tunnel any mobile device's physical camera back to the host server. By selecting "This Device's Camera", the Next.js frontend securely pipes the mobile camera directly into the Python AI backend.
+- **Automated Funneling**: Refactored `run.bat` to completely automate public Tailscale access. It instantly boots up the Python backend, the Next.js frontend, and automatically executes `tailscale funnel 3000` in a visible terminal window, immediately providing a public HTTPS URL without touching a single router setting.
+
+## 5. Enterprise API Rate Limiting & Failover
+- **Hybrid Dynamic Tracking**: The Python core now physically intercepts HTTP headers (like `x-ratelimit-remaining`) to fetch live rate limits. If a provider hides headers, it seamlessly falls back to a precise 60-second sliding-window tracker.
+- **Auto-Throttling Failsafe**: The VLM gate now self-regulates. If it detects it is dangerously close to hitting an API limit (e.g. 14/15 RPM), it artificially injects a 15-second delay to dynamically throttle requests and prevent a total API block.
+- **Visual Analytics**: Upgraded the Admin Portal and Dashboard to display animated, real-time API Usage progress bars that shift from Emerald to Rose when encountering HTTP 429 Cooldown errors.
+
+---
+
+# Changelog: Version 7.0 (Stable)
 ## 1. Universal Mobile Responsiveness
 - **Dynamic Mobile-First Scaling**: The entire Next.js frontend suite (Main Dashboard, Admin Portal, and Logs Database) has been rigorously overhauled with mobile-first CSS architecture. Elements now intelligently flex, wrap, and stack via dynamic viewport boundaries (Tailwind `sm:`, `md:`), guaranteeing flawless operation across any mobile aspect ratio.
 - **Adaptive Data Tables**: Resolved aggressive horizontal scrolling issues caused by rigid HTML tables on the Logs page. The system now dynamically shrinks cellular padding and truncates text exclusively on mobile screens to drastically improve viewport efficiency.

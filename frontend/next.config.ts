@@ -46,4 +46,4 @@ const nextConfig: NextConfig = {
 
 export default nextConfig;
 
-// HOT_RELOAD_TRIGGER: 11783167707
+// HOT_RELOAD_TRIGGER: 1783614423
