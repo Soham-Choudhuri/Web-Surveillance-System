@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "models", "yolov8n.pt")
+MODEL_PATH = os.path.join(BASE_DIR, "models", "yolov8n_all.pt")
 
 # Load environment variables from .env file
 load_dotenv(os.path.join(BASE_DIR, ".env"))
@@ -23,4 +23,8 @@ Frame_Skip = 5  # Analyze every Nth frame to save resources
 Resolution = (640, 480) # Resize frames for faster processing
 
 # Alerting Thresholds
-CONFIDENCE_THRESHOLD = 0.5
+CONFIDENCE_THRESHOLD = 0.25
+
+# Environment Context
+LOCATION_NAME = "Main Branch ATM Vestibule"
+BUSINESS_HOURS = {"start": 8, "end": 18} # 8 AM to 6 PM

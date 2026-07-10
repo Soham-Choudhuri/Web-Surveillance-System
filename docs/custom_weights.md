@@ -11,28 +11,39 @@ Roboflow Universe has thousands of community-trained YOLOv8 models.
 2. Find a high-quality dataset/model labeled for YOLOv8 (ensure the format is PyTorch `.pt`).
 3. Download the weights file (usually named `best.pt`).
 
-### Option B: Train Your Own
-1. Gather a dataset of weapons and label them using tools like Roboflow or CVAT.
-2. Export the dataset in YOLOv8 format.
-3. Train using Ultralytics locally or in Google Colab:
+### Option B: Train Your Own (Google Colab / GPU)
+1. Find a dataset on Roboflow (or merge multiple datasets into your own Roboflow Project).
+2. Open a new [Google Colab Notebook](https://colab.research.google.com/) and ensure you set the hardware accelerator to GPU (Runtime > Change runtime type > T4 GPU).
+3. On Roboflow, click **Download Dataset**, select **YOLOv8** format, and choose the **"Show download code"** option.
+4. Run the following code block in Colab to download your dataset and train the model:
 ```python
+!pip install ultralytics roboflow
+
+# 1. Download Dataset (Paste your Roboflow snippet here)
+from roboflow import Roboflow
+rf = Roboflow(api_key="YOUR_API_KEY")
+project = rf.workspace("workspace-name").project("project-name")
+version = project.version(1)
+dataset = version.download("yolov8")
+
+# 2. Train Model
 from ultralytics import YOLO
-model = YOLO('yolov8n.yaml') # Build from scratch
-results = model.train(data='your_dataset.yaml', epochs=100, imgsz=640)
+model = YOLO('yolov8n.pt') # Start with a pre-trained model
+results = model.train(data=f"{dataset.location}/data.yaml", epochs=50, imgsz=640)
 ```
-4. Retrieve the `best.pt` file from the `runs/detect/train/weights/` directory.
+5. Once complete, download the `best.pt` file from the `runs/detect/train/weights/` directory on the left file explorer.
 
 ## 2. Integrating into the System
 
 Once you have your custom `.pt` file:
-1. Rename your file to `yolov8_weapons.pt` and place it inside the `backend/` directory of this project.
-2. Open `backend/core/vision.py` and modify the model loading line:
+1. Rename your file to `yolov8_weapons.pt` and place it inside the `models/` directory in the root of this project.
+2. Open `config.py` in the root directory and modify the model path:
    ```python
    # Change this:
-   self.model = YOLO("yolov8n.pt")
+   MODEL_PATH = os.path.join(BASE_DIR, "models", "yolov8n.pt")
    
    # To this:
-   self.model = YOLO("yolov8_weapons.pt")
+   MODEL_PATH = os.path.join(BASE_DIR, "models", "yolov8_weapons.pt")
    ```
 3. Open `backend/main.py` and update the combinatorial tracking logic to match your new class names. For example, if your custom model outputs the class `firearm`, update the code:
    ```python

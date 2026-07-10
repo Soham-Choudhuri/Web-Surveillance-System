@@ -16,3 +16,6 @@ sounddevice
 scipy
 tensorflow-cpu
 websockets
+openai-whisper
+deepface
+tf-keras

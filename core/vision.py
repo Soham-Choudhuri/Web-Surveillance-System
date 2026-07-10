@@ -3,6 +3,10 @@ import cv2
 import config
 import time
 from datetime import datetime
+try:
+    from deepface import DeepFace
+except Exception as e:
+    print(f"DeepFace failed to load: {e}")
 
 class VisionEngine:
     def __init__(self, model_path=None):
@@ -13,6 +17,9 @@ class VisionEngine:
         if model_path is None:
             model_path = config.MODEL_PATH
         self.model = YOLO(model_path)
+        
+        # Phase 3: Triggered Pose Estimation Model
+        self.pose_model = YOLO("yolov8n-pose.pt")
     
     def process_frame(self, frame):
         """
@@ -54,6 +61,85 @@ class VisionEngine:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
         
         return annotated_frame, detections, timestamp
+        
+    def analyze_pose(self, frame):
+        """
+        Runs YOLO-Pose on the frame and returns a posture context string.
+        Only runs when strictly triggered to save CPU.
+        """
+        results = self.pose_model(frame, verbose=False)
+        posture_contexts = []
+        
+        if len(results) > 0 and results[0].keypoints is not None:
+            # keypoints shape is usually (num_persons, 17, 2 or 3)
+            # YOLOv8 keypoints: 5=L Shoulder, 6=R Shoulder, 9=L Wrist, 10=R Wrist, 11=L Hip, 12=R Hip
+            keypoints = results[0].keypoints.xy.cpu().numpy()
+            
+            for person_idx, kps in enumerate(keypoints):
+                if len(kps) >= 13: # Ensure we have enough keypoints
+                    l_shoulder_y = kps[5][1]
+                    r_shoulder_y = kps[6][1]
+                    l_wrist_y = kps[9][1]
+                    r_wrist_y = kps[10][1]
+                    l_hip_y = kps[11][1]
+                    r_hip_y = kps[12][1]
+                    
+                    # Both shoulders and wrists must be detected (y > 0)
+                    if (l_shoulder_y > 0 or r_shoulder_y > 0) and (l_wrist_y > 0 or r_wrist_y > 0):
+                        avg_shoulder_y = max(l_shoulder_y, r_shoulder_y) # lower Y is higher on screen
+                        avg_wrist_y = min(y for y in [l_wrist_y, r_wrist_y] if y > 0)
+                        
+                        # In image coordinates, Y=0 is top. So if wrist_y < shoulder_y, arm is raised.
+                        if avg_wrist_y > 0 and avg_wrist_y < (avg_shoulder_y - 20):
+                            posture_contexts.append(f"Person {person_idx+1} has arms raised aggressively.")
+                            
+                    # Crouching logic: shoulder to hip distance compressed
+                    if (l_shoulder_y > 0 and l_hip_y > 0):
+                        torso_height = l_hip_y - l_shoulder_y
+                        # Need a reference scale (could use face height or bounding box height)
+                        # A very crude check: if torso is very small in Y direction, they might be crouched.
+                        # Since we don't have bounding box height easily here, we'll keep the arms raised logic as primary.
+                        pass
+        
+        if posture_contexts:
+            return " ".join(posture_contexts)
+        return "No distinct aggressive posture detected."
+        
+    def analyze_emotion(self, frame, detections):
+        """
+        Crops persons from the frame and analyzes their facial emotion.
+        Returns a context string of the emotions.
+        """
+        emotion_contexts = []
+        person_count = 0
+        
+        for det in detections:
+            if det["label"].lower() == "person":
+                person_count += 1
+                try:
+                    # Parse bounding box [x1, y1, x2, y2]
+                    x1, y1, x2, y2 = [int(v) for v in det["box"]]
+                    
+                    # Ensure within bounds
+                    h, w = frame.shape[:2]
+                    x1, y1 = max(0, x1), max(0, y1)
+                    x2, y2 = min(w, x2), min(h, y2)
+                    
+                    if (x2 - x1) > 20 and (y2 - y1) > 20: # Minimum crop size
+                        person_crop = frame[y1:y2, x1:x2]
+                        
+                        # Analyze emotion on the cropped image (suppress output to save time)
+                        results = DeepFace.analyze(person_crop, actions=['emotion'], enforce_detection=False, silent=True)
+                        if isinstance(results, list) and len(results) > 0:
+                            dominant_emotion = results[0].get('dominant_emotion')
+                            if dominant_emotion:
+                                emotion_contexts.append(f"Person {person_count} looks {dominant_emotion}.")
+                except Exception as e:
+                    pass
+                    
+        if emotion_contexts:
+            return " ".join(emotion_contexts)
+        return "No clear facial emotions detected."
 
 if __name__ == "__main__":
     # Test with webcam

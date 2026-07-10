@@ -247,17 +247,32 @@ def get_state():
         "api_stats": agent.get_api_stats()
     }
 
+import whisper
+from collections import deque
+
+whisper_model = None
+try:
+    print("Loading whisper-tiny model...")
+    whisper_model = whisper.load_model("tiny")
+    print("Whisper model loaded.")
+except Exception as e:
+    logger.error(f"Failed to load whisper model: {e}")
+
 def audio_monitor_thread():
     if not AUDIO_AVAILABLE:
         return
         
+    audio_buffer = deque(maxlen=3)
     def audio_callback(indata, frames, time_info, status):
+        waveform = indata.flatten().astype(np.float32)
+        audio_buffer.append(waveform)
+        
         volume_norm = np.linalg.norm(indata)*10
         if volume_norm > 100: # Slightly lower threshold before engaging YAMNet to be safe
+            base_context = "LOUD NOISE DETECTED"
+            
             if yamnet_interpreter:
                 try:
-                    # YAMNet expects a 1D float32 waveform at 16kHz
-                    waveform = indata.flatten().astype(np.float32)
                     yamnet_interpreter.set_tensor(yamnet_input_details[0]['index'], waveform)
                     yamnet_interpreter.invoke()
                     scores = yamnet_interpreter.get_tensor(yamnet_output_details[0]['index'])
@@ -266,13 +281,28 @@ def audio_monitor_thread():
                     
                     critical_sounds = ["Screaming", "Glass", "Gunshot", "Explosion", "Siren", "Alarm", "Gun", "Shatter"]
                     if any(c.lower() in top_class_name.lower() for c in critical_sounds):
-                        state.audio_context = f"CRITICAL AUDIO DETECTED: {top_class_name}"
+                        base_context = f"CRITICAL AUDIO DETECTED: {top_class_name}"
                     else:
-                        state.audio_context = f"Loud noise detected: {top_class_name}"
+                        base_context = f"Loud noise detected: {top_class_name}"
                 except Exception as e:
-                    state.audio_context = "LOUD NOISE DETECTED (Classification failed)"
+                    base_context = "LOUD NOISE DETECTED (Classification failed)"
             else:
-                state.audio_context = "LOUD NOISE DETECTED (Possible glass breaking, shouting, or impact)"
+                base_context = "LOUD NOISE DETECTED (Possible glass breaking, shouting, or impact)"
+                
+            # Phase 2: Whisper Transcription Event Trigger
+            transcription = ""
+            if whisper_model and len(audio_buffer) > 0:
+                try:
+                    # Stitch the rolling buffer together (up to 3 seconds)
+                    full_audio = np.concatenate(list(audio_buffer))
+                    result = whisper_model.transcribe(full_audio, fp16=False, language="en")
+                    text = result.get("text", "").strip()
+                    if text:
+                        transcription = f" | Transcript: '{text}'"
+                except Exception as e:
+                    logger.error(f"Whisper transcription failed: {e}")
+                    
+            state.audio_context = base_context + transcription
             
     try:
         # YAMNet natively expects 16000Hz. We capture 16000 samples (1 second).
@@ -489,7 +519,7 @@ def _generate_frames_internal():
                 
                 # Combinatorial Logic (Person + Weapon)
                 current_person_ids = []
-                weapon_classes = ["knife", "baseball bat", "scissors"]
+                weapon_classes = ["weapon", "dangerous object"]
                 weapon_present = any(d["label"].lower() in weapon_classes for d in det_list)
                 
                 for det in det_list:
@@ -543,6 +573,28 @@ def _generate_frames_internal():
                 elif loitering_context:
                     trigger_vlm = True
                     ctx_string += f"Visual Alert: {loitering_context} "
+                    
+                if trigger_vlm:
+                    # Phase 3: Trigger Pose Analysis conditionally
+                    try:
+                        pose_ctx = vision_engine.analyze_pose(frame)
+                        ctx_string += f"[BODY LANGUAGE] {pose_ctx} "
+                    except Exception as e:
+                        logger.error(f"Pose analysis failed: {e}")
+                        
+                    # Phase 4: Trigger Emotion Analysis conditionally
+                    try:
+                        emo_ctx = vision_engine.analyze_emotion(frame, det_list)
+                        ctx_string += f"[FACIAL EMOTION] {emo_ctx} "
+                    except Exception as e:
+                        logger.error(f"Emotion analysis failed: {e}")
+                    now = datetime.now()
+                    time_str = now.strftime("%I:%M %p")
+                    hour = now.hour
+                    is_open = config.BUSINESS_HOURS["start"] <= hour < config.BUSINESS_HOURS["end"]
+                    status_str = "OPEN" if is_open else "CLOSED"
+                    env_ctx = f"[ENVIRONMENT CONTEXT] Location: {config.LOCATION_NAME} | Current Time: {time_str} | Business Status: {status_str}. "
+                    ctx_string = env_ctx + ctx_string
 
                 # Dynamic Throttling Logic
                 actual_interval = state.analysis_interval

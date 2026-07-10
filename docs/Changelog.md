@@ -1,6 +1,26 @@
 # AwareX: Multimodal Autonomous Surveillance System
 
-# Changelog: Version 8.0 (Current)
+# Changelog: Version 9.0 (Current)
+
+## 1. Context-Aware Cascade Architecture
+- **Hardware-Optimized Gating**: Engineered a strict 4-phase cascade pipeline. Heavy AI models (Whisper, Pose, DeepFace) remain completely asleep using 0% CPU during normal surveillance. They are only violently triggered the exact moment the primary YOLO weapon/loitering rules evaluate to True.
+
+## 2. Temporal & Environmental Context
+- **Zero-Cost Context Wrapper**: The backend now programmatically injects the `LOCATION_NAME`, the exact local time, and evaluates `BUSINESS_HOURS` to append `[OPEN]` or `[CLOSED]` status directly into the VLM prompt. This massively improves the AI's situational awareness (e.g., someone with a tool at an ATM at 2 AM vs 2 PM) with absolutely zero hardware overhead.
+
+## 3. Event-Driven Audio Transcription (Whisper)
+- **Rolling Audio Buffer**: Re-engineered the live microphone thread to silently maintain a rolling 3-second memory buffer.
+- **Whisper-Tiny Integration**: When the volume breaches the anomaly threshold, the buffer freezes and pipes the exact 3-second clip through OpenAI's Whisper engine. Transcriptions of aggressive speech (e.g., *"Give me the money!"*) are explicitly passed to the Cloud VLM.
+
+## 4. Algorithmic Body Language AI
+- **Triggered Pose Estimation**: Integrated `yolov8n-pose.pt`. Upon a cascade trigger, it maps 17 skeletal keypoints of the suspect. It runs fast mathematical logic comparing the Y-axis of wrists to shoulders to detect aggressive postures (e.g., arms raised to swing a bat) and injects this as `[BODY LANGUAGE]`.
+
+## 5. Facial Emotion Recognition (FER)
+- **DeepFace Analysis**: Integrated the `deepface` sentiment analyzer. When triggered, the engine dynamically crops out the tiny bounding box of a detected `"person"` and extracts their `dominant_emotion` (Anger, Fear, Surprise, etc.), finalizing the ultimate context wrapper for the VLM.
+
+---
+
+# Changelog: Version 8.0 (Stable)
 
 ## 1. Evolved Gating Architecture (Zero Background Bloat)
 - **YAMNet Audio Gatekeeper**: Integrated a microscopic 4MB TensorFlow-CPU audio model (YAMNet) to monitor the host machine's microphone. It accurately classifies 521 audio events (e.g., screams, gunshots, breaking glass) in real-time, acting as a zero-latency tripwire that wakes up the VLM only during critical anomalies.
