@@ -2,6 +2,7 @@ from ultralytics import YOLO
 import cv2
 import config
 import time
+import os
 from datetime import datetime
 try:
     from deepface import DeepFace
@@ -19,7 +20,8 @@ class VisionEngine:
         self.model = YOLO(model_path)
         
         # Phase 3: Triggered Pose Estimation Model
-        self.pose_model = YOLO("yolov8n-pose.pt")
+        pose_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models", "yolov8n-pose.pt")
+        self.pose_model = YOLO(pose_path)
     
     def process_frame(self, frame):
         """

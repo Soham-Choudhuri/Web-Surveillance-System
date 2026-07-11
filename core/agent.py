@@ -9,10 +9,10 @@ import os
 import base64
 import requests
 import time
+from utils.logger import setup_logger
 
 # Configure Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 CONFIG_FILE = "model_config.json"
 

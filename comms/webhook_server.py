@@ -3,12 +3,11 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fastapi import FastAPI, Request, Form
 from twilio.twiml.messaging_response import MessagingResponse
-import logging
+import config
+from utils.logger import setup_logger
 import json
 
-# Configure Logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 app = FastAPI()
 

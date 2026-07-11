@@ -1,6 +1,22 @@
 # AwareX: Multimodal Autonomous Surveillance System
 
-# Changelog: Version 9.0 (Current)
+# Changelog: Version 10.0 (Current)
+
+## 1. Enterprise Logging Architecture
+- **Centralized Event History**: Replaced fragile, disjointed console prints with a robust `utils.logger.py` module.
+- **Rotating File Handler**: All system events, API limits, and VLM JSON parsing errors are now permanently logged to `logs/awarex.log`. The system automatically caps the file size at 5MB and keeps the last 3 backups to prevent infinite storage bloat.
+- **Module Traceability**: Log strings are now strictly formatted (e.g., `[core.agent] | ERROR`) to make debugging specific backend modules incredibly efficient.
+
+## 2. Dynamic Qwen-VL Compatibility
+- **Deterministic VLM Fix**: Pushed a critical patch to `core.agent` for `qwen3-vl:4b` compatibility. Removed the strict Ollama `format="json"` API flag exclusively for Qwen architectures to prevent hallucination crashes, falling back to a highly deterministic `temperature: 0.1` parameter.
+- **Aggressive JSON Extraction**: Rewrote the JSON parsing fallback logic to physically hunt for `{}` brackets and strip illegal control characters (like `\r\n`), ensuring flawless threat report extraction from chatty local models.
+
+## 3. Structural Organization
+- **Model Pathing**: Consolidated `yolov8n-pose.pt` into the `models/` directory. Upgraded backend pathing logic in `core/vision.py` to use absolute `os.path` mappings, guaranteeing zero-downtime execution regardless of where the launch script is called from.
+
+---
+
+# Changelog: Version 9.0 (Stable)
 
 ## 1. Context-Aware Cascade Architecture
 - **Hardware-Optimized Gating**: Engineered a strict 4-phase cascade pipeline. Heavy AI models (Whisper, Pose, DeepFace) remain completely asleep using 0% CPU during normal surveillance. They are only violently triggered the exact moment the primary YOLO weapon/loitering rules evaluate to True.

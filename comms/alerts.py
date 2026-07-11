@@ -4,11 +4,10 @@ import os
 import json
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import config
-import logging
+import json
+from utils.logger import setup_logger
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 def _load_config():
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "model_config.json")

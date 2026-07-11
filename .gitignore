@@ -32,3 +32,5 @@ incidents.db
 # Reports
 docs/report/
 TODO.md
+# Logs
+logs/

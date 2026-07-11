@@ -39,9 +39,11 @@ from core.agent import IncidentAgent
 from core.decision import evaluate_threat
 from comms.alerts import send_alert
 from core.db import insert_log, get_logs, delete_log, clear_all_logs, get_cameras, add_camera, delete_camera
+from models.database import init_db, get_db, IncidentLog
+from utils.logger import setup_logger
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Configure Logging
+logger = setup_logger(__name__)
 
 # Global Ollama Process reference
 ollama_process = None
