@@ -39,7 +39,6 @@ from core.agent import IncidentAgent
 from core.decision import evaluate_threat
 from comms.alerts import send_alert
 from core.db import insert_log, get_logs, delete_log, clear_all_logs, get_cameras, add_camera, delete_camera
-from models.database import init_db, get_db, IncidentLog
 from utils.logger import setup_logger
 
 # Configure Logging
@@ -208,6 +207,8 @@ class AppState:
         self.audio_data = None
         self.audio_sr = None
         self.audio_stream = None
+        self.avg_motion_score = 0.0
+        self.avg_volume_norm = 0.0
 
 state = AppState()
 
@@ -488,10 +489,16 @@ def _generate_frames_internal():
                     # Blocking write naturally syncs video to audio
                     state.audio_stream.write(audio_chunk)
                     
-                    # Volume Check
+                    # Dynamic Volume Baseline (EWMA)
                     volume_norm = np.linalg.norm(audio_chunk) / len(audio_chunk) * 1000
-                    if volume_norm > 150:
-                        state.audio_context = "LOUD NOISE DETECTED in video audio track"
+                    if state.avg_volume_norm == 0.0:
+                        state.avg_volume_norm = volume_norm
+                    else:
+                        state.avg_volume_norm = (0.9 * state.avg_volume_norm) + (0.1 * volume_norm)
+                    
+                    # Trigger if > 300% of background noise AND above absolute floor of 20
+                    if frame_count > 30 and volume_norm > (state.avg_volume_norm * 3) and volume_norm > 20:
+                        state.audio_context = "CRITICAL: Loud noise/volume spike detected (possible kicking or yelling) in video audio track"
             except Exception as e:
                 pass
         
@@ -508,6 +515,12 @@ def _generate_frames_internal():
             motion_score = cv2.countNonZero(thresh)
             state.last_gray_frame = gray
             
+        # Dynamic Motion Baseline (EWMA)
+        if state.avg_motion_score == 0.0:
+            state.avg_motion_score = motion_score
+        else:
+            state.avg_motion_score = (0.9 * state.avg_motion_score) + (0.1 * motion_score)
+            
         MOTION_THRESHOLD = 500
         
         if motion_score >= MOTION_THRESHOLD:
@@ -516,12 +529,15 @@ def _generate_frames_internal():
                 ann_frame, det_list, ts = vision_engine.process_frame(frame)
                 frame = ann_frame # Use the annotated frame for the video feed
                 
+                # Filter out vehicles to ignore them in combinatorial tracking
+                det_list = [d for d in det_list if d["label"].lower() != "vehicle"]
+                
                 detections = [d["label"] for d in det_list]
                 state.object_count = len(detections)
                 
                 # Combinatorial Logic (Person + Weapon)
                 current_person_ids = []
-                weapon_classes = ["weapon", "dangerous object"]
+                weapon_classes = ["weapon", "dangerous object", "knife", "baseball bat", "scissors", "bottle", "sports ball"]
                 weapon_present = any(d["label"].lower() in weapon_classes for d in det_list)
                 
                 for det in det_list:
@@ -560,8 +576,13 @@ def _generate_frames_internal():
                     if current_time - first_seen > 10: # 10 seconds demo threshold for loitering
                         loitering_context = "A person has been loitering without interacting for over 10 seconds."
                         break
+                        
+                commotion_context = None
+                # Ignore first 30 frames. Trigger if motion spikes 300% above moving average AND is huge (> 10000)
+                if frame_count > 30 and motion_score > (state.avg_motion_score * 3) and motion_score > 10000 and len(current_person_ids) > 0:
+                    commotion_context = "Sudden high-motion commotion detected with people present."
 
-                # The VLM Gate: Only trigger if critical audio, weapon combination, or prolonged loitering is detected
+                # The VLM Gate: Only trigger if critical audio, weapon combination, sudden commotion, or prolonged loitering is detected
                 trigger_vlm = False
                 ctx_string = ""
                 
@@ -569,7 +590,10 @@ def _generate_frames_internal():
                     trigger_vlm = True
                     ctx_string += f"Audio Alert: {state.audio_context}. "
                 
-                if combinatorial_context:
+                if commotion_context:
+                    trigger_vlm = True
+                    ctx_string += f"Visual Alert: {commotion_context} "
+                elif combinatorial_context:
                     trigger_vlm = True
                     ctx_string += f"Visual Alert: {combinatorial_context} "
                 elif loitering_context:

@@ -18,4 +18,5 @@ tensorflow-cpu
 websockets
 openai-whisper
 deepface
-tf-keras
+tensorflow==2.20.0
+tf-keras==2.20.0
