@@ -252,21 +252,32 @@ Your JSON must strictly contain the following keys and data types:
 
     def _parse_json(self, text_response):
         text_response = text_response.strip()
+        if not text_response:
+            raise ValueError("Empty response from model.")
+            
         try:
             return json.loads(text_response)
         except json.JSONDecodeError:
+            # Strip out markdown block if present
             match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text_response, re.DOTALL)
             if match:
                 try:
                     return json.loads(match.group(1))
                 except:
                     pass
-            match = re.search(r'\{.*\}', text_response, re.DOTALL)
-            if match:
+                    
+            # Fallback: Extract from first { to last }
+            start_idx = text_response.find('{')
+            end_idx = text_response.rfind('}')
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                json_str = text_response[start_idx:end_idx+1]
+                # Sometimes models output invalid control characters
+                json_str = json_str.replace('\n', ' ').replace('\r', '')
                 try:
-                    return json.loads(match.group(0))
+                    return json.loads(json_str)
                 except:
                     pass
+                    
             raise ValueError(f"Could not parse valid JSON from model response. Raw: {text_response[:100]}...")
 
     def _call_ollama(self, img, prompt, model_name):
@@ -274,14 +285,20 @@ Your JSON must strictly contain the following keys and data types:
         img_byte_arr = io.BytesIO()
         img.save(img_byte_arr, format='JPEG', quality=70)
         img_bytes = img_byte_arr.getvalue()
+        kwargs = {
+            "model": model_name,
+            "prompt": prompt,
+            "images": [img_bytes],
+            "stream": False,
+            "options": {"temperature": 0.1}
+        }
         
-        response = client.generate(
-            model=model_name,
-            prompt=prompt,
-            images=[img_bytes],
-            format='json',
-            stream=False
-        )
+        # Qwen-VL models sometimes break when forced into JSON mode via the API.
+        # We only apply strict JSON formatting to other models (like LLaVA/Moondream).
+        if "qwen" not in model_name.lower():
+            kwargs["format"] = "json"
+            
+        response = client.generate(**kwargs)
         return response.get('response', '')
 
     def _call_gemini(self, img, prompt, model_name, api_key):
