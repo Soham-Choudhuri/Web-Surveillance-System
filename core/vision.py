@@ -17,6 +17,12 @@ class VisionEngine:
         """
         if model_path is None:
             model_path = config.MODEL_PATH
+            
+        # Fallback to standard YOLOv8 nano if custom model is missing (e.g. on fresh git clone)
+        if not os.path.exists(model_path):
+            print(f"Warning: Custom model {model_path} not found. Falling back to standard 'yolov8n.pt' which will auto-download.")
+            model_path = "yolov8n.pt"
+            
         self.model = YOLO(model_path)
         
         # Phase 3: Triggered Pose Estimation Model

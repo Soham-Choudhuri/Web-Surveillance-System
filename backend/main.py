@@ -463,6 +463,7 @@ def generate_frames():
         state.last_gray_frame = None
 
 def _generate_frames_internal():
+    global client_camera_frame
     frame_count = 0
     while True:
         if not state.monitoring or state.cap is None or (state.cap != "WebSocket" and not state.cap.isOpened()):
