@@ -14,8 +14,14 @@ export default function AdminPortal() {
     twilio_type: "SMS",
     twilio_from: "",
     twilio_to: "",
-    allowed_origins: [] as string[]
+    allowed_origins: [] as string[],
+    custom_prompt: "Flag any individuals wearing masks or obscuring their faces.",
+    tracked_weapons: "knife, baseball bat, scissors, bottle, sports ball",
+    motion_sensitivity: 10000,
+    velocity_threshold: 500,
+    loitering_threshold: 10
   });
+  const [activeTab, setActiveTab] = useState("Model Settings");
   const [newOrigin, setNewOrigin] = useState("");
   const [saving, setSaving] = useState(false);
   
@@ -54,7 +60,7 @@ export default function AdminPortal() {
       
     fetch(`/api/config`)
       .then(res => res.json())
-      .then(data => setConfig(data))
+      .then(data => setConfig(prev => ({...prev, ...data})))
       .catch(() => {});
       
     fetchModels();
@@ -217,6 +223,13 @@ export default function AdminPortal() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+        <div className="flex border-b border-white/10 mb-8 space-x-6">
+          <button onClick={() => setActiveTab("Model Settings")} className={`pb-3 text-sm font-medium transition-colors ${activeTab === 'Model Settings' ? 'border-b-2 border-indigo-500 text-white' : 'text-neutral-500 hover:text-neutral-300'}`}>Model Settings</button>
+          <button onClick={() => setActiveTab("Behavioral Settings")} className={`pb-3 text-sm font-medium transition-colors ${activeTab === 'Behavioral Settings' ? 'border-b-2 border-indigo-500 text-white' : 'text-neutral-500 hover:text-neutral-300'}`}>Behavioral Settings</button>
+          <button onClick={() => setActiveTab("System Settings")} className={`pb-3 text-sm font-medium transition-colors ${activeTab === 'System Settings' ? 'border-b-2 border-indigo-500 text-white' : 'text-neutral-500 hover:text-neutral-300'}`}>System Settings</button>
+        </div>
+
+        {activeTab === "Model Settings" && (
         <div className="p-6 sm:p-8 rounded-3xl bg-white/[0.02] border border-white/5 shadow-2xl">
           <h2 className="text-2xl font-bold mb-2">Model Configuration</h2>
           <p className="text-neutral-400 mb-8 text-sm">Select and configure the visual language model powering the intelligence hub.</p>
@@ -511,79 +524,85 @@ export default function AdminPortal() {
             </div>
             )}
 
-            <div className="pt-8 mt-8 border-t border-white/5">
-              <h2 className="text-xl font-bold mb-2">Communications & Alerts</h2>
-              <p className="text-neutral-400 mb-6 text-sm">Configure Twilio credentials for SMS and WhatsApp incident alerting.</p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="text-sm font-medium text-neutral-300 block mb-2">Twilio Account SID</label>
-                  <input 
-                    type="text" 
-                    value={(config as any).twilio_sid || ""}
-                    onChange={e => setConfig({...config, twilio_sid: e.target.value})}
-                    placeholder="AC..."
-                    className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-neutral-300 block mb-2">Auth Token</label>
-                  <input 
-                    type="password" 
-                    value={(config as any).twilio_auth || ""}
-                    onChange={e => setConfig({...config, twilio_auth: e.target.value})}
-                    placeholder="Enter secret token"
-                    className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-neutral-300 block mb-2">Message Type</label>
-                  <select 
-                    value={(config as any).twilio_type || "SMS"}
-                    onChange={e => setConfig({...config, twilio_type: e.target.value})}
-                    className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none text-white"
-                  >
-                    <option value="SMS">Standard SMS</option>
-                    <option value="WhatsApp">WhatsApp Message</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-neutral-300 block mb-2">Sender Number (Twilio)</label>
-                  <input 
-                    type="text" 
-                    value={(config as any).twilio_from || ""}
-                    onChange={e => setConfig({...config, twilio_from: e.target.value})}
-                    placeholder="+1234567890"
-                    className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="text-sm font-medium text-neutral-300 block mb-2">Receiver Authority Number</label>
-                  <input 
-                    type="text" 
-                    value={(config as any).twilio_to || ""}
-                    onChange={e => setConfig({...config, twilio_to: e.target.value})}
-                    placeholder="+1234567890"
-                    className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-6 border-t border-white/5 flex items-center justify-start">
-              <a href="https://www.twilio.com/login" target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors font-medium flex items-center gap-1">
-                 Twilio Developer Dashboard
-                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-              </a>
-            </div>
           </div>
         </div>
+        )}
 
-        {/* Security: Allowed Origins */}
-        <div className="mt-8 p-6 sm:p-8 rounded-3xl bg-white/[0.02] border border-white/5 shadow-2xl relative overflow-hidden">
+        {activeTab === "System Settings" && (
+        <div className="p-6 sm:p-8 rounded-3xl bg-white/[0.02] border border-white/5 shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
             <svg className="w-32 h-32" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
           </div>
+          
+          <h2 className="text-xl font-bold mb-2">Communications & Alerts</h2>
+          <p className="text-neutral-400 mb-6 text-sm">Configure Twilio credentials for SMS and WhatsApp incident alerting.</p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="text-sm font-medium text-neutral-300 block mb-2">Twilio Account SID</label>
+              <input 
+                type="text" 
+                value={(config as any).twilio_sid || ""}
+                onChange={e => setConfig({...config, twilio_sid: e.target.value})}
+                placeholder="AC..."
+                className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white"
+              />
+              <p className="text-[11px] text-neutral-500 mt-1">Your primary Twilio Account String ID from the console.</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-neutral-300 block mb-2">Auth Token</label>
+              <input 
+                type="password" 
+                value={(config as any).twilio_auth || ""}
+                onChange={e => setConfig({...config, twilio_auth: e.target.value})}
+                placeholder="Enter secret token"
+                className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white"
+              />
+              <p className="text-[11px] text-neutral-500 mt-1">The secret authorization token for API requests.</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-neutral-300 block mb-2">Message Type</label>
+              <select 
+                value={(config as any).twilio_type || "SMS"}
+                onChange={e => setConfig({...config, twilio_type: e.target.value})}
+                className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none text-white"
+              >
+                <option value="SMS">Standard SMS</option>
+                <option value="WhatsApp">WhatsApp Message</option>
+              </select>
+              <p className="text-[11px] text-neutral-500 mt-1">Choose whether to send standard text messages or rich WhatsApp alerts.</p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-neutral-300 block mb-2">Sender Number (Twilio)</label>
+              <input 
+                type="text" 
+                value={(config as any).twilio_from || ""}
+                onChange={e => setConfig({...config, twilio_from: e.target.value})}
+                placeholder="+1234567890"
+                className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white"
+              />
+              <p className="text-[11px] text-neutral-500 mt-1">The phone number provided by Twilio (include + country code).</p>
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-sm font-medium text-neutral-300 block mb-2">Receiver Authority Number</label>
+              <input 
+                type="text" 
+                value={(config as any).twilio_to || ""}
+                onChange={e => setConfig({...config, twilio_to: e.target.value})}
+                placeholder="+1234567890"
+                className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white"
+              />
+              <p className="text-[11px] text-neutral-500 mt-1">The target phone number to receive critical threat alerts.</p>
+            </div>
+          </div>
+
+          <div className="pt-6 border-t border-white/5 flex items-center justify-start mb-8 mt-6">
+            <a href="https://www.twilio.com/login" target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors font-medium flex items-center gap-1">
+               Twilio Developer Dashboard
+               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+            </a>
+          </div>
+
           <h2 className="text-2xl font-bold mb-2">Security: Allowed Origins</h2>
           <p className="text-neutral-400 mb-8 text-sm">Manage which IP addresses or Tailscale URLs are allowed to access the system remotely. Next.js will hot-reload automatically when you save changes.</p>
           
@@ -634,15 +653,96 @@ export default function AdminPortal() {
             </button>
           </div>
           
-          <div className="pt-6 mt-6 border-t border-white/5 flex flex-col sm:flex-row items-center justify-end">
-             <button 
-                onClick={handleSave} 
-                disabled={isDownloading || saving}
-                className="w-full sm:w-auto justify-center bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/30 disabled:bg-neutral-800 disabled:text-neutral-500 disabled:border-white/5 disabled:shadow-none px-6 py-2.5 rounded-xl font-medium text-sm transition-all duration-300 flex items-center shadow-[0_0_15px_rgba(99,102,241,0.15)] hover:shadow-[0_0_25px_rgba(99,102,241,0.3)]"
-              >
-                {saving ? 'Applying Security Rules...' : 'Save All Configurations'}
-              </button>
+        </div>
+        )}
+
+        {activeTab === "Behavioral Settings" && (
+        <div className="p-6 sm:p-8 rounded-3xl bg-white/[0.02] border border-white/5 shadow-2xl">
+          <h2 className="text-2xl font-bold mb-2">Behavioral Intelligence</h2>
+          <p className="text-neutral-400 mb-8 text-sm">Tune the physical thresholds and custom logical rules for the AI Agent.</p>
+          
+          <div className="space-y-6">
+            <div>
+              <label className="text-sm font-medium text-neutral-300 block mb-2">Custom AI Rules (VLM Prompt Injection)</label>
+              <textarea 
+                value={config.custom_prompt || ""}
+                onChange={e => setConfig({...config, custom_prompt: e.target.value})}
+                placeholder="e.g. 'I run a warehouse. If anyone is NOT wearing a yellow safety vest, output Critical.'"
+                className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white h-24 resize-none"
+              />
+              <p className="text-[11px] text-neutral-500 mt-1">This text is directly injected into the AI's "Brain" during threat evaluation.</p>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-neutral-300 block mb-2">Tracked Objects (Comma Separated)</label>
+              <input 
+                type="text"
+                value={config.tracked_weapons || ""}
+                onChange={e => setConfig({...config, tracked_weapons: e.target.value})}
+                className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white"
+              />
+              <p className="text-[11px] text-neutral-500 mt-1">YOLO will flag these objects for instant VLM evaluation. Example: backpack, laptop, knife.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4 border-t border-white/5">
+              <div>
+                <label className="text-sm font-medium text-neutral-300 block mb-2">Commotion Threshold</label>
+                <input 
+                  type="number"
+                  value={config.motion_sensitivity || 10000}
+                  onChange={e => setConfig({...config, motion_sensitivity: parseInt(e.target.value) || 10000})}
+                  className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white"
+                />
+                <p className="text-[11px] text-neutral-500 mt-1">Pixels shifted to trigger alert (Default: 10000).</p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-neutral-300 block mb-2">Sprint Velocity (px/s)</label>
+                <input 
+                  type="number"
+                  value={config.velocity_threshold || 500}
+                  onChange={e => setConfig({...config, velocity_threshold: parseInt(e.target.value) || 500})}
+                  className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white"
+                />
+                <p className="text-[11px] text-neutral-500 mt-1">Speed required to bypass sleep timers (Default: 500).</p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-neutral-300 block mb-2">Loitering Timer (s)</label>
+                <input 
+                  type="number"
+                  value={config.loitering_threshold || 10}
+                  onChange={e => setConfig({...config, loitering_threshold: parseInt(e.target.value) || 10})}
+                  className="w-full bg-neutral-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-white"
+                />
+                <p className="text-[11px] text-neutral-500 mt-1">Seconds standing still before alert (Default: 10).</p>
+              </div>
+            </div>
+            
           </div>
+        </div>
+        )}
+
+        {/* Global Save Button */}
+        <div className="mt-8 p-6 sm:p-8 rounded-3xl bg-indigo-900/20 border border-indigo-500/30 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+           <div>
+             <h3 className="text-lg font-bold text-white mb-1">Apply Changes</h3>
+             <p className="text-neutral-400 text-sm">Save your settings. System components will hot-reload automatically.</p>
+           </div>
+           <button 
+             onClick={() => saveConfig(config)}
+             disabled={saving}
+             className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-8 py-3.5 rounded-xl transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
+           >
+             {saving ? (
+               <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+             ) : (
+               <>
+                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+                 <span>Save All Configurations</span>
+               </>
+             )}
+           </button>
         </div>
 
       </main>

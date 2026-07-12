@@ -87,11 +87,12 @@ I will provide you with an image and a list of objects detected by a YOLO model:
 TASK:
 Analyze the image carefully. Identify any suspicious activity, safety threats, or unusual behavior based on the visual context and any provided system alerts.
 
-CRITICAL THREAT EVALUATION GUIDELINES:
-- Differentiate carefully between harmless everyday activities and genuine security threats.
-- ONLY classify as Suspicious or Critical if there is clear, explicit visual evidence of danger, crime, or unauthorized access.
-- Default to "Normal" for standard human behavior and harmless objects.
-
+CRITICAL THREAT EVALUATION GUIDELINES (FOLLOW STRICTLY):
+1. ROBBERY/THEFT: If you see people hastily taking items from shelves/displays and putting them into bags, backpacks, or pockets, this is a ROBBERY. You MUST output "Critical" and "High".
+2. VIOLENCE/WEAPONS: If you see physical struggles, fighting, or weapons (guns, knives, bats), you MUST output "Critical" and "High".
+3. SUSPICIOUS BEHAVIOR: Sneaking, crouching to avoid detection, wearing masks/face coverings indoors, or forced entry MUST be output as "Suspicious" and "Medium".
+4. NORMAL: Only if people are calmly standing, walking, or waiting without doing any of the above, output "Normal" and "Low".
+{f"5. CUSTOM USER RULE: {cfg.get('custom_prompt', '')}" if cfg.get('custom_prompt') else ""}
 OUTPUT REQUIREMENTS:
 You MUST respond with a raw JSON object and absolutely nothing else. Do not use placeholders.
 Your JSON must strictly contain the following keys and data types:

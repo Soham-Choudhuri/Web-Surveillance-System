@@ -209,6 +209,10 @@ class AppState:
         self.audio_stream = None
         self.avg_motion_score = 0.0
         self.avg_volume_norm = 0.0
+        self.person_history = {}
+        self.dynamic_cooldown = 10
+        self.last_config_time = 0
+        self.sys_config = {}
 
 state = AppState()
 
@@ -323,26 +327,42 @@ def upload_video(file: UploadFile = File(...)):
         tfile.write(file.file.read())
         tfile.close()
         
-        # Rip audio using FFmpeg
-        audio_path = tempfile.mktemp(suffix=".wav")
-        # Subprocess FFmpeg - using shell=False, redirecting output
+        # Fast check if audio stream exists using ffprobe
+        has_audio = False
         try:
-            subprocess.run(["ffmpeg", "-y", "-i", tfile.name, "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "1", audio_path], 
-                           check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            logger.warning(f"FFmpeg audio extraction failed or FFmpeg not installed. Proceeding with video only. Error: {e}")
-        
-        # Load audio into memory
-        if os.path.exists(audio_path):
-            sr, data = wav.read(audio_path)
-            state.audio_sr = sr
-            state.audio_data = data
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_type", "-of", "csv=p=0", tfile.name],
+                capture_output=True, text=True
+            )
+            if "audio" in probe.stdout:
+                has_audio = True
+        except Exception:
+            pass
+            
+        if has_audio:
+            # Rip audio using FFmpeg
+            audio_path = tempfile.mktemp(suffix=".wav")
+            # Subprocess FFmpeg - using shell=False, redirecting output
             try:
-                os.remove(audio_path)
-            except:
-                pass
+                subprocess.run(["ffmpeg", "-y", "-i", tfile.name, "-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "1", audio_path], 
+                               check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except (subprocess.CalledProcessError, FileNotFoundError) as e:
+                logger.warning(f"FFmpeg audio extraction failed or FFmpeg not installed. Proceeding with video only. Error: {e}")
+            
+            # Load audio into memory
+            if os.path.exists(audio_path):
+                sr, data = wav.read(audio_path)
+                state.audio_sr = sr
+                state.audio_data = data
+                try:
+                    os.remove(audio_path)
+                except:
+                    pass
+            else:
+                state.audio_data = None
         else:
             state.audio_data = None
+            logger.info(f"No audio stream detected in {file.filename}. Skipping audio extraction.")
             
         return {"status": "Uploaded", "video_path": tfile.name}
     except Exception as e:
@@ -521,7 +541,21 @@ def _generate_frames_internal():
         else:
             state.avg_motion_score = (0.9 * state.avg_motion_score) + (0.1 * motion_score)
             
+        # Refresh config every 2 seconds to avoid excessive disk I/O
+        if current_time - state.last_config_time > 2.0:
+            state.sys_config = get_config_dict()
+            state.last_config_time = current_time
+            
+        sys_config = state.sys_config
         MOTION_THRESHOLD = 500
+        commotion_sensitivity = int(sys_config.get("motion_sensitivity", 10000))
+        velocity_threshold = int(sys_config.get("velocity_threshold", 500))
+        loitering_threshold = int(sys_config.get("loitering_threshold", 10))
+        
+        w_str = sys_config.get("tracked_weapons", "knife, baseball bat, scissors, bottle, sports ball")
+        weapon_classes = [w.strip().lower() for w in w_str.split(",") if w.strip()]
+        if "weapon" not in weapon_classes: weapon_classes.append("weapon")
+        if "dangerous object" not in weapon_classes: weapon_classes.append("dangerous object")
         
         if motion_score >= MOTION_THRESHOLD:
             # YOLO Processing with frame skipping
@@ -537,13 +571,29 @@ def _generate_frames_internal():
                 
                 # Combinatorial Logic (Person + Weapon)
                 current_person_ids = []
-                weapon_classes = ["weapon", "dangerous object", "knife", "baseball bat", "scissors", "bottle", "sports ball"]
                 weapon_present = any(d["label"].lower() in weapon_classes for d in det_list)
                 
+                velocity_context = None
                 for det in det_list:
                     if det["label"].lower() == "person" and det.get("track_id", -1) != -1:
                         tid = det["track_id"]
                         current_person_ids.append(tid)
+                        
+                        # Velocity tracking
+                        x1, y1, x2, y2 = det["box"]
+                        center_x = (x1 + x2) / 2
+                        center_y = (y1 + y2) / 2
+                        
+                        if tid in state.person_history:
+                            last_time, last_x, last_y = state.person_history[tid]
+                            time_diff = current_time - last_time
+                            if time_diff > 0:
+                                distance = ((center_x - last_x)**2 + (center_y - last_y)**2)**0.5
+                                velocity = distance / time_diff
+                                if velocity > velocity_threshold:
+                                    velocity_context = f"A person is moving at extremely high speed (Velocity: {int(velocity)} px/s, possible sprinting/lunging)."
+                                    
+                        state.person_history[tid] = (current_time, center_x, center_y)
                         
                         # Combinatorial Tracking
                         if weapon_present:
@@ -564,6 +614,9 @@ def _generate_frames_internal():
                 for tid in list(state.threat_trackers.keys()):
                     if tid not in current_person_ids:
                         del state.threat_trackers[tid]
+                for tid in list(state.person_history.keys()):
+                    if tid not in current_person_ids:
+                        del state.person_history[tid]
                         
                 combinatorial_context = None
                 for tid, first_seen in state.threat_trackers.items():
@@ -573,13 +626,13 @@ def _generate_frames_internal():
                         
                 loitering_context = None
                 for tid, first_seen in state.person_trackers.items():
-                    if current_time - first_seen > 10: # 10 seconds demo threshold for loitering
-                        loitering_context = "A person has been loitering without interacting for over 10 seconds."
+                    if current_time - first_seen > loitering_threshold:
+                        loitering_context = f"A person has been loitering without interacting for over {loitering_threshold} seconds."
                         break
                         
                 commotion_context = None
-                # Ignore first 30 frames. Trigger if motion spikes 300% above moving average AND is huge (> 10000)
-                if frame_count > 30 and motion_score > (state.avg_motion_score * 3) and motion_score > 10000 and len(current_person_ids) > 0:
+                # Ignore first 30 frames. Trigger if motion spikes 300% above moving average AND is huge
+                if frame_count > 30 and motion_score > (state.avg_motion_score * 3) and motion_score > commotion_sensitivity and len(current_person_ids) > 0:
                     commotion_context = "Sudden high-motion commotion detected with people present."
 
                 # The VLM Gate: Only trigger if critical audio, weapon combination, sudden commotion, or prolonged loitering is detected
@@ -590,7 +643,10 @@ def _generate_frames_internal():
                     trigger_vlm = True
                     ctx_string += f"Audio Alert: {state.audio_context}. "
                 
-                if commotion_context:
+                if velocity_context:
+                    trigger_vlm = True
+                    ctx_string += f"Visual Alert: {velocity_context} "
+                elif commotion_context:
                     trigger_vlm = True
                     ctx_string += f"Visual Alert: {commotion_context} "
                 elif combinatorial_context:
@@ -637,8 +693,16 @@ def _generate_frames_internal():
                             # Dangerously close to limit, throttle!
                             actual_interval = max(actual_interval, 15) # Force at least 15s delay
 
-                # AI Reasoning (Strictly respects user interval, but includes context if present)
-                if trigger_vlm and (current_time - state.last_analysis_time >= actual_interval) and not getattr(state, "is_analyzing", False):
+                # AI Reasoning (Strictly respects dynamic cooldown unless emergency)
+                # An emergency is a critical audio spike or a high velocity sprint
+                is_emergency = (velocity_context is not None) or (getattr(state, "audio_context", None) and "CRITICAL" in state.audio_context)
+                cooldown_elapsed = (current_time - state.last_analysis_time >= state.dynamic_cooldown)
+                
+                # We enforce the API throttle limit only if it's not an emergency
+                if not is_emergency:
+                    cooldown_elapsed = cooldown_elapsed and (current_time - state.last_analysis_time >= actual_interval)
+                
+                if trigger_vlm and (cooldown_elapsed or is_emergency) and not getattr(state, "is_analyzing", False):
                     pil_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                     
                     def background_analysis_task(img, det, ctx_str, run_id):
@@ -656,6 +720,12 @@ def _generate_frames_internal():
                             # Decision Engine
                             severity = incident_report.get("severity", "LOW").upper()
                             classification = incident_report.get("classification", "Normal")
+                            
+                            # Dynamic Semantic Caching
+                            if severity == "LOW":
+                                state.dynamic_cooldown = 30 # 30s sleep for safe scenes
+                            else:
+                                state.dynamic_cooldown = 5 # 5s sleep for active threats
                             
                             # Update threat level string
                             state.threat_level = f"{severity} ({classification})"

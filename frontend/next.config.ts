@@ -41,6 +41,12 @@ const nextConfig: NextConfig = {
         destination: 'http://127.0.0.1:8000/whatsapp-webhook'
       }
     ];
+  },
+  experimental: {
+    proxyClientMaxBodySize: '1024mb',
+    serverActions: {
+      bodySizeLimit: '1024mb'
+    }
   }
 };
 
