@@ -14,7 +14,8 @@ env/
 .pytest_cache/
 
 # AI Models
-models/
+models/blobs/
+models/manifests/
 
 # Video/Media
 *.mp4
