@@ -86,6 +86,10 @@ export default function Dashboard() {
               if (videoRef.current && canvasRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
                 const ctx = canvasRef.current.getContext('2d');
                 if (ctx) {
+                  // Eliminate network latency queue buildup on slow connections (like Tailscale)
+                  if (wsRef.current.bufferedAmount > 0) {
+                     return; // Drop frame if network is congested
+                  }
                   ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
                   const base64 = canvasRef.current.toDataURL('image/jpeg', 0.4);
                   wsRef.current.send(base64);
@@ -144,7 +148,18 @@ export default function Dashboard() {
 
   const handleStop = async () => {
     setErrorMsg(null);
-    await fetch(`/api/stop`, { method: 'POST' });
+    // Optimistic UI Update: Force stop immediately on the frontend
+    setState(prev => ({...prev, monitoring: false}));
+    
+    try {
+      const res = await fetch(`/api/stop`, { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json();
+        setErrorMsg(data.message || "Failed to stop stream on backend.");
+      }
+    } catch (e) {
+      setErrorMsg("Network disconnected. Forced local stop.");
+    }
   };
 
   return (
